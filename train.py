@@ -1,74 +1,80 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score, f1_score
-from xgboost import XGBClassifier
-import mlflow
-import mlflow.sklearn
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, f1_score
+import matplotlib.pyplot as plt
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+import skops.io as sio
+from evidently.report import Report
+from evidently.metric_preset import ClassificationPreset
 
 # === Load Dataset ===
-file_path = "data/mental_health_lite.csv"
-df = pd.read_csv(file_path)
+df = pd.read_csv("Data/mental_health_lite.csv")
 
-# === Encode Categorical Columns ===
-categorical_cols = df.select_dtypes(include=["object"]).columns.tolist()
-label_encoders = {}
-df_encoded = df.copy()
+# === Select & reorder features ===
+features = [
+    "age", "gender", "employment_status", "work_environment", "mental_health_history",
+    "seeks_treatment", "stress_level", "sleep_hours", "physical_activity_days",
+    "depression_score", "anxiety_score", "social_support_score", "productivity_score"
+]
+target = "mental_health_risk"
+df = df[features + [target]].dropna()
 
-for col in categorical_cols:
-    le = LabelEncoder()
-    df_encoded[col] = le.fit_transform(df_encoded[col])
-    label_encoders[col] = le
+# === Split Train-Test ===
+X = df[features]
+y = df[target]
 
-# === Split Feature & Target ===
-target_column = "mental_health_risk"
-X = df_encoded.drop(columns=[target_column])
-y = df_encoded[target_column]
-target_encoder = label_encoders[target_column]
-y_class_names = target_encoder.classes_
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+# === Preprocessing ===
+cat_cols = X.select_dtypes(include="object").columns.tolist()
+num_cols = X.select_dtypes(exclude="object").columns.tolist()
 
-# === MLflow Config ===
-mlflow.set_tracking_uri("http://127.0.0.1:5000")  # Use local tracking server
-mlflow.set_experiment("Mental Health Risk Classification")
+preprocessor = ColumnTransformer([
+    ("cat", OrdinalEncoder(), cat_cols),
+    ("num", Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler())
+    ]), num_cols)
+])
 
-# === Model 1: Random Forest ===
-with mlflow.start_run(run_name="RandomForest"):
-    rf_model = RandomForestClassifier(random_state=42)
-    rf_pipeline = Pipeline([("model", rf_model)])
-    rf_pipeline.fit(X_train, y_train)
+# === Pipeline ===
+pipe = Pipeline([
+    ("preprocess", preprocessor),
+    ("model", RandomForestClassifier(n_estimators=100, random_state=42))
+])
 
-    y_pred_rf = rf_pipeline.predict(X_test)
-    acc_rf = accuracy_score(y_test, y_pred_rf)
-    f1_rf = f1_score(y_test, y_pred_rf, average="macro")
+pipe.fit(X_train, y_train)
 
-    mlflow.log_param("model", "RandomForest")
-    mlflow.log_metric("accuracy", acc_rf)
-    mlflow.log_metric("f1_score", f1_rf)
-    mlflow.sklearn.log_model(rf_pipeline, "random_forest_model")
+# === Evaluation ===
+y_pred = pipe.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred, average="macro")
 
-    print("Random Forest Metrics:")
-    print(classification_report(y_test, y_pred_rf, target_names=y_class_names))
+print(f"Accuracy: {accuracy:.2f}, F1: {f1:.2f}")
 
-# === Model 2: XGBoost ===
-with mlflow.start_run(run_name="XGBoost"):
-    xgb_model = XGBClassifier(use_label_encoder=False, eval_metric="mlogloss", random_state=42)
-    xgb_pipeline = Pipeline([("model", xgb_model)])
-    xgb_pipeline.fit(X_train, y_train)
+with open("Results/metrics.txt", "w") as f:
+    f.write(f"Accuracy = {accuracy:.2f}, F1 Score = {f1:.2f}")
 
-    y_pred_xgb = xgb_pipeline.predict(X_test)
-    acc_xgb = accuracy_score(y_test, y_pred_xgb)
-    f1_xgb = f1_score(y_test, y_pred_xgb, average="macro")
+# === Confusion Matrix ===
+cm = confusion_matrix(y_test, y_pred, labels=pipe.named_steps['model'].classes_)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=pipe.named_steps['model'].classes_)
+disp.plot()
+plt.savefig("results/model_results.png", dpi=120)
 
-    mlflow.log_param("model", "XGBoost")
-    mlflow.log_metric("accuracy", acc_xgb)
-    mlflow.log_metric("f1_score", f1_xgb)
-    mlflow.sklearn.log_model(xgb_pipeline, "xgboost_model")
+# === Save Model ===
+sio.dump(pipe, "model/mental_health_model.skops")
 
-    print("XGBoost Metrics:")
-    print(classification_report(y_test, y_pred_xgb, target_names=y_class_names))
+# === Evidently Report ===
+report = Report(metrics=[ClassificationPreset()])
+report.run(y_true=y_test, y_pred=y_pred, data=X_test)
+report.save_html("results/evidently_report.html")
+
+# === Save Reference Data for Monitoring ===
+X_test_copy = X_test.copy()
+X_test_copy["target"] = y_test
+X_test_copy.to_csv("monitoring/reference.csv", index=False)

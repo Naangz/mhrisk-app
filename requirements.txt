@@ -1,8 +1,15 @@
-Flask==1.1.2
-Werkzeug==1.0.1
-Jinja2==2.11.3
-MarkupSafe==2.0.1
-gunicorn==20.1.0
-certifi==2021.10.8
-itsdangerous==1.1.0
+# Core ML libraries
+pandas==1.5.0
+numpy==1.24.0
+scikit-learn==1.3.0
+matplotlib
 xgboost
+
+# Model persistence
+skops==0.10.0
+
+# Model monitoring
+evidently>=0.4.15
+
+# Optional: code formatter
+black==23.7.0

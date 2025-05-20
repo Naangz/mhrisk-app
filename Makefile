@@ -5,12 +5,15 @@ train:
 	python train.py
 
 eval:
-	python monitor.py
 	echo "## Model Metrics" > report.md
-	cat Results/metrics.txt >> report.md
-	echo "![Confusion Matrix](./Results/confusion_matrix.png)" >> report.md
-	echo "[Data Drift Report](./Results/data_drift_report.html)" >> report.md
-	echo "[Data Test Suite](./Results/data_tests.html)" >> report.md
+	cat ./Results/metrics.txt >> report.md
+	echo "\n## Confusion Matrix Plot" >> report.md
+	echo "![Confusion Matrix](./Results/model_results.png)" >> report.md
+	echo "\n## Evidently Report" >> report.md
+	echo "[Klik untuk lihat report Evidently](./Results/evidently_report.html)" >> report.md
+	echo "\n## Monitoring Dashboard" >> report.md
+	echo "[Klik untuk lihat Monitoring Dashboard](./Monitoring/dashboard.html)" >> report.md
+	cml comment create report.md
 
 update-branch:
 	git config --global user.name $(USER_NAME)
