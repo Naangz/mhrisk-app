@@ -218,7 +218,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload model artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Update dari v3 ke v4
         with:
           name: trained-models-${{ github.sha }}
           path: |
@@ -226,7 +226,6 @@ jobs:
             Results/
             Explanations/
           retention-days: 30
-        continue-on-error: true
 
   security-scan:
     runs-on: ubuntu-latest
@@ -284,7 +283,7 @@ jobs:
           if [ -f App/requirements.txt ]; then pip install -r App/requirements.txt; fi
       
       - name: Download model artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: trained-models-${{ github.sha }}
         continue-on-error: true
