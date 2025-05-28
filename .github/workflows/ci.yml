@@ -244,6 +244,10 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write  # Required untuk CodeQL
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
