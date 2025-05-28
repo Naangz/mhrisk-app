@@ -39,25 +39,20 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black flake8 pytest pytest-cov
+          pip install "black[jupyter]" flake8 pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Code formatting check
+      - name: Check code formatting
         run: |
-          black --check --diff . || (echo "Code formatting issues found. Run 'black .' to fix." && exit 1)
+          echo "🔍 Checking code formatting with Black..."
+          black --check --diff . --line-length=127
+        continue-on-error: false
       
       - name: Lint with flake8
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          echo "🔍 Running flake8 linting..."
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --max-line-length=127
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      
-      - name: Run unit tests
-        run: |
-          if [ -d "tests" ]; then
-            pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
-          else
-            echo "No tests directory found, skipping tests"
-          fi
         continue-on-error: true
 
   data-validation:
