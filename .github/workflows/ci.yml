@@ -222,9 +222,9 @@ jobs:
         with:
           name: trained-models-${{ github.sha }}
           path: |
-            Model/
-            Results/
-            Explanations/
+            model/
+            results/
+            explanations/
           retention-days: 30
 
   security-scan:
