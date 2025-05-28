@@ -100,7 +100,7 @@ jobs:
       
       - name: Create sample dataset (if not exists)
         run: |
-          if [ ! -f "Data/mental_health_dataset.csv" ]; then
+          if [ ! -f "data/mental_health_lite.csv" ]; then
             python -c "
             import pandas as pd
             import numpy as np
@@ -127,7 +127,7 @@ jobs:
             }
             
             df = pd.DataFrame(data)
-            df.to_csv('Data/mental_health_dataset.csv', index=False)
+            df.to_csv('data/mental_health_lite.csv', index=False)
             print('Sample dataset created')
             "
           fi
@@ -138,7 +138,7 @@ jobs:
           import pandas as pd
           import numpy as np
           
-          df = pd.read_csv('Data/mental_health_dataset.csv')
+          df = pd.read_csv('data/mental_health_lite.csv')
           
           assert len(df) > 0, 'Dataset is empty'
           assert not df.isnull().all().any(), 'Dataset has completely null columns'
@@ -173,11 +173,11 @@ jobs:
       
       - name: Create directories
         run: |
-          mkdir -p Model Results Explanations Monitoring/whylogs_profiles
+          mkdir -p Model Results Explanations monitoring/whylogs_profiles
       
       - name: Create sample dataset (if not exists)
         run: |
-          if [ ! -f "Data/mental_health_dataset.csv" ]; then
+          if [ ! -f "data/mental_health_lite.csv" ]; then
             python -c "
             import pandas as pd
             import numpy as np
@@ -203,7 +203,7 @@ jobs:
             }
             
             df = pd.DataFrame(data)
-            df.to_csv('Data/mental_health_dataset.csv', index=False)
+            df.to_csv('data/mental_health_lite.csv', index=False)
             "
           fi
       
