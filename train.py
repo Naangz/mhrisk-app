@@ -20,23 +20,20 @@ from datetime import datetime
 
 def load_and_prepare_data():
     """Load dan prepare mental health dataset dengan WhyLogs monitoring"""
-    
+
     # Try to load dataset dari folder data
-    data_files = [
-        "data/mental_health_lite.csv",
-        "data/mental_health_life_cut.csv"
-    ]
-    
+    data_files = ["data/mental_health_lite.csv", "data/mental_health_life_cut.csv"]
+
     df = None
     for file_path in data_files:
         if os.path.exists(file_path):
             df = pd.read_csv(file_path)
             print(f"✅ Dataset loaded from: {file_path}")
             break
-    
+
     if df is None:
         raise FileNotFoundError("No dataset found in data/ folder")
-    
+
     # Initialize WhyLogs dengan LOCAL session
     try:
         why.init(allow_local=True, allow_anonymous=False)
@@ -47,7 +44,7 @@ def load_and_prepare_data():
 
         # Create directory if not exists
         os.makedirs("monitoring/whylogs_profiles", exist_ok=True)
-        
+
         # Save profile
         profile_view = profile.view()
         profile_view.write("monitoring/whylogs_profiles/training_data_profile")
@@ -56,13 +53,13 @@ def load_and_prepare_data():
     except Exception as e:
         print(f"⚠️ WhyLogs error: {e}")
         print("Continuing without WhyLogs profiling...")
-        
+
         # Fallback: Simple data profiling
         print(f"📊 Dataset Info:")
         print(f"  - Shape: {df.shape}")
         print(f"  - Missing values: {df.isnull().sum().sum()}")
         print(f"  - Columns: {list(df.columns)}")
-    
+
     # Encode categorical variables
     encoders = {}
     categorical_cols = ["gender", "employment_status", "work_environment", "mental_health_history", "seeks_treatment"]
@@ -76,23 +73,23 @@ def load_and_prepare_data():
 
     # Encode target variable
     target_col = None
-    possible_targets = ['mental_health_risk', 'risk_level', 'target']
-    
+    possible_targets = ["mental_health_risk", "risk_level", "target"]
+
     for col in possible_targets:
         if col in df.columns:
             target_col = col
             break
-    
+
     if target_col:
         le_risk = LabelEncoder()
-        df['risk_encoded'] = le_risk.fit_transform(df[target_col])
-        encoders['risk'] = le_risk
+        df["risk_encoded"] = le_risk.fit_transform(df[target_col])
+        encoders["risk"] = le_risk
         print(f"✅ Encoded target ({target_col}): {le_risk.classes_}")
     else:
         print("⚠️ No target column found, using dummy target")
-        df['risk_encoded'] = np.random.choice([0, 1, 2], size=len(df))
-        encoders['risk'] = LabelEncoder().fit(['Low', 'Medium', 'High'])
-    
+        df["risk_encoded"] = np.random.choice([0, 1, 2], size=len(df))
+        encoders["risk"] = LabelEncoder().fit(["Low", "Medium", "High"])
+
     # Save encoders
     os.makedirs("model", exist_ok=True)
     with open("model/encoders.pkl", "wb") as f:
@@ -158,57 +155,55 @@ def create_model_pipelines():
 
     return models
 
+
 def train_and_select_best_model():
     """Training multiple models dan pilih yang terbaik"""
-    
+
     print("📊 Loading and preparing data...")
     df, encoders = load_and_prepare_data()
-    
+
     # Identify numeric columns for features
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    
+
     # Remove target columns from features
-    feature_columns = [col for col in numeric_cols 
-                      if not col.endswith('_encoded') or col != 'risk_encoded']
-    
+    feature_columns = [col for col in numeric_cols if not col.endswith("_encoded") or col != "risk_encoded"]
+
     # Add encoded categorical features
-    encoded_cols = [col for col in df.columns if col.endswith('_encoded') and col != 'risk_encoded']
+    encoded_cols = [col for col in df.columns if col.endswith("_encoded") and col != "risk_encoded"]
     feature_columns.extend(encoded_cols)
-    
+
     # Filter existing columns
     available_features = [col for col in feature_columns if col in df.columns]
     print(f"📋 Available features: {len(available_features)}")
     print(f"Features: {available_features}")
-    
+
     if len(available_features) == 0:
         raise ValueError("No feature columns found in dataset")
-    
+
     X = df[available_features]
-    y = df['risk_encoded']
-    
+    y = df["risk_encoded"]
+
     print(f"📊 Dataset shape: X={X.shape}, y={y.shape}")
-    
+
     # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
     # Create model pipelines
     models = create_model_pipelines()
-    
+
     # Train and evaluate models
     model_scores = {}
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    
+
     print("🔄 Training and evaluating models...")
-    
+
     for name, model in models.items():
         print(f"\n🚀 Training {name}...")
 
         try:
             # Cross-validation
-            cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
-            
+            cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring="accuracy", n_jobs=-1)
+
             mean_score = cv_scores.mean()
             std_score = cv_scores.std()
 
@@ -230,24 +225,23 @@ def train_and_select_best_model():
                 "model": model,
                 "error": str(e),
             }
-    
+
     # Select best model
-    valid_models = {k: v for k, v in model_scores.items() if 'error' not in v}
-    
+    valid_models = {k: v for k, v in model_scores.items() if "error" not in v}
+
     if not valid_models:
         raise ValueError("No models trained successfully")
-    
-    best_model_name = max(valid_models.keys(), 
-                         key=lambda x: valid_models[x]['mean_accuracy'])
-    best_model = valid_models[best_model_name]['model']
-    best_score = valid_models[best_model_name]['mean_accuracy']
-    
+
+    best_model_name = max(valid_models.keys(), key=lambda x: valid_models[x]["mean_accuracy"])
+    best_model = valid_models[best_model_name]["model"]
+    best_score = valid_models[best_model_name]["mean_accuracy"]
+
     print(f"\n🏆 BEST MODEL: {best_model_name}")
     print(f"📊 CV Accuracy: {best_score:.4f}")
-    
+
     # Train best model
     best_model.fit(X_train, y_train)
-    
+
     # Final evaluation
     y_pred = best_model.predict(X_test)
     test_accuracy = accuracy_score(y_test, y_pred)
@@ -260,7 +254,7 @@ def train_and_select_best_model():
     # Create results directories
     os.makedirs("results", exist_ok=True)
     os.makedirs("explanations", exist_ok=True)
-    
+
     # Save results
     comparison_results = {
         "timestamp": datetime.now().isoformat(),
@@ -272,10 +266,10 @@ def train_and_select_best_model():
         "final_test_accuracy": test_accuracy,
         "final_test_f1": test_f1,
     }
-    
+
     with open("results/model_comparison.json", "w") as f:
         json.dump(comparison_results, f, indent=2)
-    
+
     # Save metrics
     with open("results/metrics.txt", "w") as f:
         f.write(f"Best Model: {best_model_name}\n")
@@ -286,10 +280,10 @@ def train_and_select_best_model():
         for name, scores in valid_models.items():
             f.write(f"{name}: {scores['mean_accuracy']:.4f} (+/- {scores['std_accuracy']*2:.4f})\n")
         f.write(f"\nClassification Report:\n{classification_report(y_test, y_pred)}")
-    
+
     # Save model
     sio.dump(best_model, "model/mental_health_pipeline.skops")
-    
+
     # Save metadata
     metadata = {
         "best_model_name": best_model_name,
@@ -298,16 +292,17 @@ def train_and_select_best_model():
         "test_f1": test_f1,
         "timestamp": datetime.now().isoformat(),
     }
-    
+
     with open("model/model_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
-    
+
     with open("model/feature_columns.pkl", "wb") as f:
         pickle.dump(available_features, f)
 
     print("✅ Model training completed successfully!")
 
     return best_model, best_model_name, test_accuracy, test_f1
+
 
 if __name__ == "__main__":
     try:
