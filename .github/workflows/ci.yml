@@ -1,0 +1,60 @@
+name: Continuous Integration with Training
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM untuk continuous training
+  workflow_dispatch:
+
+permissions: write-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: iterative/setup-cml@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+      
+      - name: Install Packages
+        run: make install
+      
+      - name: Format Code
+        run: make format
+      
+      - name: Check Data Drift
+        id: drift-check
+        run: |
+          if make check-drift; then
+            echo "drift=false" >> $GITHUB_OUTPUT
+          else
+            echo "drift=true" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+      
+      - name: Train Model
+        run: make train
+        
+      - name: Monitor Data Quality
+        run: make monitor
+      
+      - name: Evaluation and Reporting
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make eval
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-artifacts
+          path: |
+            Model/
+            Results/
+            Explanations/
+            Monitoring/
