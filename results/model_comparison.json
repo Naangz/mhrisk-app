@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-05-28T21:26:06.494234",
+  "best_model": "LightGBM",
+  "model_scores": {
+    "RandomForest": {
+      "mean_accuracy": 0.9214285714285714,
+      "std_accuracy": 0.02962348764761103
+    },
+    "XGBoost": {
+      "mean_accuracy": 0.95,
+      "std_accuracy": 0.025152595516655746
+    },
+    "LightGBM": {
+      "mean_accuracy": 0.9557142857142857,
+      "std_accuracy": 0.022314999074019043
+    }
+  },
+  "final_test_accuracy": 0.9700996677740864,
+  "final_test_f1": 0.9698930735084731
+}

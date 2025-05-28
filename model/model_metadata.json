@@ -1,0 +1,21 @@
+{
+  "best_model_name": "LightGBM",
+  "feature_columns": [
+    "age",
+    "gender_encoded",
+    "employment_encoded",
+    "work_env_encoded",
+    "history_encoded",
+    "treatment_encoded",
+    "stress_level",
+    "sleep_hours",
+    "physical_activity_days",
+    "depression_score",
+    "anxiety_score",
+    "social_support_score",
+    "productivity_score"
+  ],
+  "test_accuracy": 0.9700996677740864,
+  "test_f1": 0.9698930735084731,
+  "timestamp": "2025-05-28T21:26:07.170615"
+}

@@ -1,80 +1,96 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, f1_score
-import matplotlib.pyplot as plt
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-import skops.io as sio
-from evidently.report import Report
-from evidently.metric_preset import ClassificationPreset
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
+from xgboost import XGBClassifier
+import whylogs as why
+from whylogs import ResultSet
+from whylogs import log
+from datetime import datetime
+import shap
+from skops.io import dump, load
+import numpy as np
 
-# === Load Dataset ===
-df = pd.read_csv("Data/mental_health_lite.csv")
+# 1. Load CSV
+file_path = "data/mental_health_lite.csv"
+df = pd.read_csv(file_path)
 
-# === Select & reorder features ===
-features = [
-    "age", "gender", "employment_status", "work_environment", "mental_health_history",
-    "seeks_treatment", "stress_level", "sleep_hours", "physical_activity_days",
-    "depression_score", "anxiety_score", "social_support_score", "productivity_score"
-]
-target = "mental_health_risk"
-df = df[features + [target]].dropna()
+# 3. Encode target
+le_target = LabelEncoder()
+df["mental_health_risk"] = le_target.fit_transform(df["mental_health_risk"])
 
-# === Split Train-Test ===
-X = df[features]
-y = df[target]
+# 4. Split fitur dan target
+X = df.drop(columns=["mental_health_risk"])
+y = df["mental_health_risk"]
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# 5. Split data latih dan uji
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
 
-# === Preprocessing ===
-cat_cols = X.select_dtypes(include="object").columns.tolist()
-num_cols = X.select_dtypes(exclude="object").columns.tolist()
+# 6. WhyLogs - Logging data train
+log(X_train).write(f"whylogs_profile_train_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-preprocessor = ColumnTransformer([
-    ("cat", OrdinalEncoder(), cat_cols),
-    ("num", Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
-    ]), num_cols)
+# 7. Encode fitur kategorikal
+label_encoders = {}
+for col in X_train.select_dtypes(include="object").columns:
+    le = LabelEncoder()
+    X_train[col] = le.fit_transform(X_train[col])
+    X_test[col] = le.transform(X_test[col])
+    label_encoders[col] = le
+
+# 8. Pipeline Random Forest
+pipeline_rf = Pipeline([
+    ("scaler", StandardScaler()),
+    ("clf", RandomForestClassifier(random_state=42))
 ])
+pipeline_rf.fit(X_train, y_train)
+y_pred_rf = pipeline_rf.predict(X_test)
 
-# === Pipeline ===
-pipe = Pipeline([
-    ("preprocess", preprocessor),
-    ("model", RandomForestClassifier(n_estimators=100, random_state=42))
+# 9. Pipeline XGBoost
+pipeline_xgb = Pipeline([
+    ("scaler", StandardScaler()),
+    ("clf", XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=42))
 ])
+pipeline_xgb.fit(X_train, y_train)
+y_pred_xgb = pipeline_xgb.predict(X_test)
 
-pipe.fit(X_train, y_train)
+# 10. WhyLogs - Logging prediksi
+pred_df = pd.DataFrame({
+    "y_test": y_test,
+    "y_pred_rf": y_pred_rf,
+    "y_pred_xgb": y_pred_xgb
+})
+log(pred_df).write(f"whylogs_profile_pred_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-# === Evaluation ===
-y_pred = pipe.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-f1 = f1_score(y_test, y_pred, average="macro")
+# 11. Evaluasi model
+print("Random Forest Report:")
+print(classification_report(y_test, y_pred_rf, target_names=le_target.classes_))
 
-print(f"Accuracy: {accuracy:.2f}, F1: {f1:.2f}")
+print("\nXGBoost Report:")
+print(classification_report(y_test, y_pred_xgb, target_names=le_target.classes_))
 
-with open("Results/metrics.txt", "w") as f:
-    f.write(f"Accuracy = {accuracy:.2f}, F1 Score = {f1:.2f}")
+# Hitung akurasi masing-masing model
+acc_rf = accuracy_score(y_test, y_pred_rf)
+acc_xgb = accuracy_score(y_test, y_pred_xgb)
 
-# === Confusion Matrix ===
-cm = confusion_matrix(y_test, y_pred, labels=pipe.named_steps['model'].classes_)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=pipe.named_steps['model'].classes_)
-disp.plot()
-plt.savefig("results/model_results.png", dpi=120)
+print(f"Akurasi Random Forest: {acc_rf:.4f}")
+print(f"Akurasi XGBoost: {acc_xgb:.4f}")
 
-# === Save Model ===
-sio.dump(pipe, "model/mental_health_model.skops")
+# Pilih model dengan akurasi terbaik
+if acc_rf >= acc_xgb:
+    best_model = pipeline_rf
+    best_model_name = "random_forest"
+    print("Model terbaik: Random Forest")
+else:
+    best_model = pipeline_xgb
+    best_model_name = "xgboost"
+    print("Model terbaik: XGBoost")
 
-# === Evidently Report ===
-report = Report(metrics=[ClassificationPreset()])
-report.run(y_true=y_test, y_pred=y_pred, data=X_test)
-report.save_html("results/evidently_report.html")
-
-# === Save Reference Data for Monitoring ===
-X_test_copy = X_test.copy()
-X_test_copy["target"] = y_test
-X_test_copy.to_csv("monitoring/reference.csv", index=False)
+# Simpan hanya model terbaik
+from skops.io import dump
+dump(best_model, f"model/model_best_{best_model_name}.skops")
