@@ -17,6 +17,7 @@ import lightgbm as lgb
 import json
 from datetime import datetime
 
+
 def load_and_prepare_data():
     """Load dan prepare mental health dataset dengan WhyLogs monitoring"""
     
@@ -40,10 +41,10 @@ def load_and_prepare_data():
     try:
         why.init(allow_local=True, allow_anonymous=False)
         print("✅ WhyLogs session initialized (LOCAL)")
-        
+
         # Create WhyLogs profile
         profile = why.log(df)
-        
+
         # Create directory if not exists
         os.makedirs("monitoring/whylogs_profiles", exist_ok=True)
         
@@ -51,7 +52,7 @@ def load_and_prepare_data():
         profile_view = profile.view()
         profile_view.write("monitoring/whylogs_profiles/training_data_profile")
         print("✅ WhyLogs profile saved successfully")
-        
+
     except Exception as e:
         print(f"⚠️ WhyLogs error: {e}")
         print("Continuing without WhyLogs profiling...")
@@ -64,16 +65,15 @@ def load_and_prepare_data():
     
     # Encode categorical variables
     encoders = {}
-    categorical_cols = ['gender', 'employment_status', 'work_environment', 
-                       'mental_health_history', 'seeks_treatment']
-    
+    categorical_cols = ["gender", "employment_status", "work_environment", "mental_health_history", "seeks_treatment"]
+
     for col in categorical_cols:
         if col in df.columns:
             le = LabelEncoder()
-            df[f'{col}_encoded'] = le.fit_transform(df[col])
+            df[f"{col}_encoded"] = le.fit_transform(df[col])
             encoders[col] = le
             print(f"✅ Encoded {col}: {len(le.classes_)} classes")
-    
+
     # Encode target variable
     target_col = None
     possible_targets = ['mental_health_risk', 'risk_level', 'target']
@@ -97,55 +97,65 @@ def load_and_prepare_data():
     os.makedirs("model", exist_ok=True)
     with open("model/encoders.pkl", "wb") as f:
         pickle.dump(encoders, f)
-    
+
     return df, encoders
+
 
 def create_model_pipelines():
     """Create multiple ML pipelines"""
-    
+
     models = {
-        'RandomForest': Pipeline([
-            ('scaler', StandardScaler()),
-            ('classifier', RandomForestClassifier(
-                n_estimators=100, 
-                max_depth=10, 
-                min_samples_split=5,
-                min_samples_leaf=2,
-                random_state=42
-            ))
-        ]),
-        
-        'XGBoost': Pipeline([
-            ('scaler', StandardScaler()),
-            ('classifier', xgb.XGBClassifier(
-                objective='multi:softprob',
-                learning_rate=0.1,
-                max_depth=6,
-                n_estimators=100,
-                colsample_bytree=0.8,
-                subsample=0.8,
-                random_state=42,
-                eval_metric='mlogloss'
-            ))
-        ]),
-        
-        'LightGBM': Pipeline([
-            ('scaler', StandardScaler()),
-            ('classifier', lgb.LGBMClassifier(
-                objective='multiclass',
-                num_class=3,
-                learning_rate=0.1,
-                max_depth=6,
-                n_estimators=100,
-                feature_fraction=0.8,
-                bagging_fraction=0.8,
-                bagging_freq=5,
-                random_state=42,
-                verbosity=-1
-            ))
-        ])
+        "RandomForest": Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "classifier",
+                    RandomForestClassifier(
+                        n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, random_state=42
+                    ),
+                ),
+            ]
+        ),
+        "XGBoost": Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "classifier",
+                    xgb.XGBClassifier(
+                        objective="multi:softprob",
+                        learning_rate=0.1,
+                        max_depth=6,
+                        n_estimators=100,
+                        colsample_bytree=0.8,
+                        subsample=0.8,
+                        random_state=42,
+                        eval_metric="mlogloss",
+                    ),
+                ),
+            ]
+        ),
+        "LightGBM": Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "classifier",
+                    lgb.LGBMClassifier(
+                        objective="multiclass",
+                        num_class=3,
+                        learning_rate=0.1,
+                        max_depth=6,
+                        n_estimators=100,
+                        feature_fraction=0.8,
+                        bagging_fraction=0.8,
+                        bagging_freq=5,
+                        random_state=42,
+                        verbosity=-1,
+                    ),
+                ),
+            ]
+        ),
     }
-    
+
     return models
 
 def train_and_select_best_model():
@@ -194,31 +204,31 @@ def train_and_select_best_model():
     
     for name, model in models.items():
         print(f"\n🚀 Training {name}...")
-        
+
         try:
             # Cross-validation
             cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='accuracy', n_jobs=-1)
             
             mean_score = cv_scores.mean()
             std_score = cv_scores.std()
-            
+
             model_scores[name] = {
-                'cv_scores': cv_scores.tolist(),
-                'mean_accuracy': mean_score,
-                'std_accuracy': std_score,
-                'model': model
+                "cv_scores": cv_scores.tolist(),
+                "mean_accuracy": mean_score,
+                "std_accuracy": std_score,
+                "model": model,
             }
-            
+
             print(f"✅ {name} - CV Accuracy: {mean_score:.4f} (+/- {std_score * 2:.4f})")
-            
+
         except Exception as e:
             print(f"❌ {name} failed: {e}")
             model_scores[name] = {
-                'cv_scores': [0.0],
-                'mean_accuracy': 0.0,
-                'std_accuracy': 0.0,
-                'model': model,
-                'error': str(e)
+                "cv_scores": [0.0],
+                "mean_accuracy": 0.0,
+                "std_accuracy": 0.0,
+                "model": model,
+                "error": str(e),
             }
     
     # Select best model
@@ -241,26 +251,26 @@ def train_and_select_best_model():
     # Final evaluation
     y_pred = best_model.predict(X_test)
     test_accuracy = accuracy_score(y_test, y_pred)
-    test_f1 = f1_score(y_test, y_pred, average='weighted')
-    
+    test_f1 = f1_score(y_test, y_pred, average="weighted")
+
     print(f"\n📊 Final Test Results:")
     print(f"   Test Accuracy: {test_accuracy:.4f}")
     print(f"   Test F1 Score: {test_f1:.4f}")
-    
+
     # Create results directories
     os.makedirs("results", exist_ok=True)
     os.makedirs("explanations", exist_ok=True)
     
     # Save results
     comparison_results = {
-        'timestamp': datetime.now().isoformat(),
-        'best_model': best_model_name,
-        'model_scores': {name: {
-            'mean_accuracy': scores['mean_accuracy'],
-            'std_accuracy': scores['std_accuracy']
-        } for name, scores in valid_models.items()},
-        'final_test_accuracy': test_accuracy,
-        'final_test_f1': test_f1
+        "timestamp": datetime.now().isoformat(),
+        "best_model": best_model_name,
+        "model_scores": {
+            name: {"mean_accuracy": scores["mean_accuracy"], "std_accuracy": scores["std_accuracy"]}
+            for name, scores in valid_models.items()
+        },
+        "final_test_accuracy": test_accuracy,
+        "final_test_f1": test_f1,
     }
     
     with open("results/model_comparison.json", "w") as f:
@@ -282,11 +292,11 @@ def train_and_select_best_model():
     
     # Save metadata
     metadata = {
-        'best_model_name': best_model_name,
-        'feature_columns': available_features,
-        'test_accuracy': test_accuracy,
-        'test_f1': test_f1,
-        'timestamp': datetime.now().isoformat()
+        "best_model_name": best_model_name,
+        "feature_columns": available_features,
+        "test_accuracy": test_accuracy,
+        "test_f1": test_f1,
+        "timestamp": datetime.now().isoformat(),
     }
     
     with open("model/model_metadata.json", "w") as f:
@@ -294,9 +304,9 @@ def train_and_select_best_model():
     
     with open("model/feature_columns.pkl", "wb") as f:
         pickle.dump(available_features, f)
-    
+
     print("✅ Model training completed successfully!")
-    
+
     return best_model, best_model_name, test_accuracy, test_f1
 
 if __name__ == "__main__":
@@ -309,5 +319,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Training failed: {e}")
         import traceback
+
         traceback.print_exc()
         exit(1)
