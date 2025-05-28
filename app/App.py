@@ -45,7 +45,6 @@ def predict_mental_health_risk(
     social_support_score,
     productivity_score,
 ):
-
     # Encode categorical variables
     gender_encoded = encoders["gender"].transform([gender])[0]
     employment_encoded = encoders["employment"].transform([employment_status])[0]
