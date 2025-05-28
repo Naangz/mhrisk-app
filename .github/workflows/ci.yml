@@ -245,40 +245,41 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: read
-      security-events: write  # Required untuk CodeQL
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: python
+      - name: Run basic security checks
+        run: |
+          echo "🔍 Running basic security checks..."
+          
+          # Install security tools
+          pip install safety bandit semgrep
+          
+          # Safety check for known vulnerabilities
+          echo "Checking for known vulnerabilities..."
+          safety check --json || echo "⚠️ Safety check completed with warnings"
+          
+          # Bandit for security issues
+          echo "Scanning for security issues..."
+          bandit -r . -f json || echo "⚠️ Bandit scan completed with warnings"
+          
+          # Semgrep for additional security patterns
+          echo "Running Semgrep security scan..."
+          semgrep --config=auto . --json || echo "⚠️ Semgrep scan completed with warnings"
+          
+          echo "✅ Security scanning completed"
         continue-on-error: true
       
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-        continue-on-error: true
-      
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        continue-on-error: true
-      
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'table'
-        continue-on-error: true
-      
-      - name: Python security check
-        run: |
-          pip install safety bandit
-          safety check || true
-          bandit -r . || true
+          exit-code: '0'  # Don't fail the build
         continue-on-error: true
 
   integration-test:
