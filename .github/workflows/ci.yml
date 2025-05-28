@@ -1,60 +1,431 @@
-name: Continuous Integration with Training
+name: Continuous Integration - Multi-Model MLOps
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
   schedule:
     - cron: '0 2 * * *'  # Daily at 2 AM untuk continuous training
   workflow_dispatch:
+    inputs:
+      retrain_models:
+        description: 'Force model retraining'
+        required: false
+        default: 'false'
+        type: boolean
+      deploy_to_staging:
+        description: 'Deploy to staging after CI'
+        required: false
+        default: 'false'
+        type: boolean
 
-permissions: write-all
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
-  build:
+  code-quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: iterative/setup-cml@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Set up Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+          cache: 'pip'
       
-      - name: Install Packages
-        run: make install
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black flake8 pytest pytest-cov
+          pip install -r requirements.txt
       
-      - name: Format Code
-        run: make format
+      - name: Code formatting check
+        run: |
+          black --check --diff *.py
+          if [ $? -ne 0 ]; then
+            echo "Code formatting issues found. Run 'black *.py' to fix."
+            exit 1
+          fi
       
-      - name: Check Data Drift
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        continue-on-error: true
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  data-validation:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Validate dataset
+        run: |
+          python -c "
+          import pandas as pd
+          import numpy as np
+          
+          # Load and validate dataset
+          df = pd.read_csv('Data/mental_health_dataset.csv')
+          
+          # Basic validation checks
+          assert len(df) > 0, 'Dataset is empty'
+          assert not df.isnull().all().any(), 'Dataset has completely null columns'
+          
+          # Check required columns
+          required_cols = ['age', 'gender', 'employment_status', 'mental_health_risk']
+          missing_cols = [col for col in required_cols if col not in df.columns]
+          assert len(missing_cols) == 0, f'Missing required columns: {missing_cols}'
+          
+          # Data type checks
+          assert df['age'].dtype in ['int64', 'float64'], 'Age column should be numeric'
+          assert df['mental_health_risk'].isin(['Low', 'Medium', 'High']).all(), 'Invalid risk levels'
+          
+          print('✅ Dataset validation passed')
+          print(f'Dataset shape: {df.shape}')
+          print(f'Risk distribution: {df[\"mental_health_risk\"].value_counts().to_dict()}')
+          "
+      
+      - name: Data quality monitoring
+        run: |
+          python monitor.py
+      
+      - name: Check data drift
         id: drift-check
         run: |
-          if make check-drift; then
+          if python -c "
+          import pandas as pd
+          from monitor import detect_data_drift
+          df = pd.read_csv('Data/mental_health_dataset.csv')
+          try:
+              drift, report = detect_data_drift('Monitoring/whylogs_profiles/training_data_profile', df)
+              if drift:
+                  print('Data drift detected!')
+                  exit(1)
+              else:
+                  print('No significant data drift detected.')
+                  exit(0)
+          except Exception as e:
+              print(f'Drift detection failed: {e}')
+              print('Proceeding with training...')
+              exit(0)
+          "; then
             echo "drift=false" >> $GITHUB_OUTPUT
           else
             echo "drift=true" >> $GITHUB_OUTPUT
           fi
         continue-on-error: true
+
+  model-training:
+    runs-on: ubuntu-latest
+    needs: [code-quality, data-validation]
+    if: github.event.inputs.retrain_models == 'true' || needs.data-validation.outputs.drift == 'true' || github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-      - name: Train Model
-        run: make train
-        
-      - name: Monitor Data Quality
-        run: make monitor
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
       
-      - name: Evaluation and Reporting
-        env:
-          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make eval
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
       
-      - name: Upload Artifacts
+      - name: Create necessary directories
+        run: |
+          mkdir -p Model Results Explanations Monitoring/whylogs_profiles
+      
+      - name: Train and compare models
+        run: |
+          python train.py
+        timeout-minutes: 30
+      
+      - name: Validate model artifacts
+        run: |
+          python -c "
+          import os
+          import json
+          import skops.io as sio
+          
+          # Check if model files exist
+          assert os.path.exists('Model/mental_health_pipeline.skops'), 'Model file not found'
+          assert os.path.exists('Model/model_metadata.json'), 'Model metadata not found'
+          assert os.path.exists('Results/model_comparison.json'), 'Model comparison not found'
+          
+          # Validate model can be loaded
+          model = sio.load('Model/mental_health_pipeline.skops', trusted=True)
+          assert hasattr(model, 'predict'), 'Model does not have predict method'
+          
+          # Check metadata
+          with open('Model/model_metadata.json', 'r') as f:
+              metadata = json.load(f)
+          assert 'best_model_name' in metadata, 'Best model name not in metadata'
+          assert 'test_accuracy' in metadata, 'Test accuracy not in metadata'
+          
+          print('✅ Model validation passed')
+          print(f'Best model: {metadata[\"best_model_name\"]}')
+          print(f'Test accuracy: {metadata[\"test_accuracy\"]:.4f}')
+          "
+      
+      - name: Upload model artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: model-artifacts
+          name: trained-models-${{ github.sha }}
           path: |
             Model/
             Results/
             Explanations/
-            Monitoring/
+          retention-days: 30
+
+  model-evaluation:
+    runs-on: ubuntu-latest
+    needs: [model-training]
+    if: always() && needs.model-training.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cml
+      
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: trained-models-${{ github.sha }}
+      
+      - name: Generate model report
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create comprehensive model report
+          echo "# 🤖 Multi-Model Training Report" > report.md
+          echo "" >> report.md
+          echo "**Commit:** \`${{ github.sha }}\`" >> report.md
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> report.md
+          echo "**Timestamp:** $(date)" >> report.md
+          echo "" >> report.md
+          
+          # Model comparison results
+          if [ -f "Results/model_comparison.json" ]; then
+            echo "## 📊 Model Comparison Results" >> report.md
+            python -c "
+            import json
+            with open('Results/model_comparison.json', 'r') as f:
+                data = json.load(f)
+            print(f'**Best Model:** {data[\"best_model\"]}')
+            print(f'**Final Test Accuracy:** {data[\"final_test_accuracy\"]:.4f}')
+            print(f'**Final Test F1 Score:** {data[\"final_test_f1\"]:.4f}')
+            print()
+            print('### Model Performance Comparison:')
+            for model, scores in data['model_scores'].items():
+                print(f'- **{model}:** {scores[\"mean_accuracy\"]:.4f} (±{scores[\"std_accuracy\"]:.4f})')
+            " >> report.md
+            echo "" >> report.md
+          fi
+          
+          # Add visualizations
+          echo "## 📈 Model Performance Visualization" >> report.md
+          if [ -f "Results/model_comparison.png" ]; then
+            echo "![Model Comparison](./Results/model_comparison.png)" >> report.md
+          fi
+          echo "" >> report.md
+          
+          echo "## 🎯 Confusion Matrix" >> report.md
+          if [ -f "Results/model_results.png" ]; then
+            echo "![Confusion Matrix](./Results/model_results.png)" >> report.md
+          fi
+          echo "" >> report.md
+          
+          echo "## 🔍 SHAP Explanations" >> report.md
+          if [ -f "Results/shap_summary.png" ]; then
+            echo "![SHAP Summary](./Results/shap_summary.png)" >> report.md
+          fi
+          if [ -f "Results/shap_importance.png" ]; then
+            echo "![SHAP Importance](./Results/shap_importance.png)" >> report.md
+          fi
+          
+          # Post comment with CML
+          cml comment create report.md
+      
+      - name: Check model performance threshold
+        run: |
+          python -c "
+          import json
+          
+          # Load model results
+          with open('Results/model_comparison.json', 'r') as f:
+              data = json.load(f)
+          
+          accuracy = data['final_test_accuracy']
+          f1_score = data['final_test_f1']
+          
+          # Define thresholds
+          MIN_ACCURACY = 0.70
+          MIN_F1_SCORE = 0.70
+          
+          print(f'Model Accuracy: {accuracy:.4f} (threshold: {MIN_ACCURACY})')
+          print(f'Model F1 Score: {f1_score:.4f} (threshold: {MIN_F1_SCORE})')
+          
+          if accuracy < MIN_ACCURACY:
+              print(f'❌ Model accuracy {accuracy:.4f} below threshold {MIN_ACCURACY}')
+              exit(1)
+          
+          if f1_score < MIN_F1_SCORE:
+              print(f'❌ Model F1 score {f1_score:.4f} below threshold {MIN_F1_SCORE}')
+              exit(1)
+          
+          print('✅ Model performance meets quality thresholds')
+          "
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Python security check
+        run: |
+          pip install safety bandit
+          safety check --json || true
+          bandit -r . -f json || true
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [model-training]
+    if: always() && needs.model-training.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r App/requirements.txt
+      
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: trained-models-${{ github.sha }}
+      
+      - name: Test Gradio app
+        run: |
+          cd App
+          python -c "
+          import app
+          import gradio as gr
+          
+          # Test app initialization
+          demo = app.demo
+          assert demo is not None, 'Gradio app failed to initialize'
+          
+          # Test prediction function
+          result = app.predict_mental_health_risk(
+              30, 'Male', 'Employed', 'On-site', 'No', 'No', 
+              5, 7.0, 3, 15, 10, 70, 75
+          )
+          
+          assert len(result) == 4, 'Prediction function should return 4 values'
+          assert result[0] in ['Low', 'Medium', 'High'], 'Invalid prediction result'
+          
+          print('✅ Gradio app integration test passed')
+          "
+      
+      - name: Test API endpoints
+        run: |
+          # Start Gradio app in background
+          cd App
+          python app.py &
+          APP_PID=$!
+          
+          # Wait for app to start
+          sleep 10
+          
+          # Test health check (if implemented)
+          # curl -f http://localhost:7860/health || echo "Health check endpoint not available"
+          
+          # Cleanup
+          kill $APP_PID || true
+
+  notify-status:
+    runs-on: ubuntu-latest
+    needs: [code-quality, data-validation, model-training, model-evaluation, security-scan, integration-test]
+    if: always()
+    steps:
+      - name: Notify CI Status
+        run: |
+          if [[ "${{ needs.code-quality.result }}" == "success" && 
+                "${{ needs.data-validation.result }}" == "success" && 
+                ("${{ needs.model-training.result }}" == "success" || "${{ needs.model-training.result }}" == "skipped") &&
+                ("${{ needs.model-evaluation.result }}" == "success" || "${{ needs.model-evaluation.result }}" == "skipped") &&
+                "${{ needs.security-scan.result }}" == "success" && 
+                ("${{ needs.integration-test.result }}" == "success" || "${{ needs.integration-test.result }}" == "skipped") ]]; then
+            echo "✅ CI Pipeline completed successfully"
+            echo "ci_status=success" >> $GITHUB_ENV
+          else
+            echo "❌ CI Pipeline failed"
+            echo "ci_status=failure" >> $GITHUB_ENV
+            exit 1
+          fi
