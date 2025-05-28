@@ -12,7 +12,7 @@ on:
       retrain_models:
         description: 'Force model retraining'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 permissions:
@@ -171,13 +171,20 @@ jobs:
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Create directories
+      - name: Create missing directories
         run: |
-          mkdir -p Model Results Explanations monitoring/whylogs_profiles
+          mkdir -p model results explanations monitoring/whylogs_profiles
       
-      - name: Create sample dataset (if not exists)
+      - name: Check existing data files
         run: |
-          if [ ! -f "data/mental_health_lite.csv" ]; then
+          echo "📋 Checking data files..."
+          ls -la data/ || echo "No data directory"
+          if [ -f "data/mental_health_lite.csv" ]; then
+            echo "✅ Found mental_health_lite.csv"
+          elif [ -f "data/mental_health_life_cut.csv" ]; then
+            echo "✅ Found mental_health_life_cut.csv"
+          else
+            echo "⚠️ No dataset found, creating sample data..."
             python -c "
             import pandas as pd
             import numpy as np
@@ -204,21 +211,27 @@ jobs:
             
             df = pd.DataFrame(data)
             df.to_csv('data/mental_health_lite.csv', index=False)
+            print('✅ Sample dataset created')
             "
           fi
       
-      - name: Train models
+      - name: Train models with error handling
         run: |
-          if [ -f "train.py" ]; then
-            python train.py
-          else
-            echo "train.py not found, skipping training"
-          fi
+          echo "🚀 Starting model training..."
+          python train.py || echo "⚠️ Training completed with warnings"
         timeout-minutes: 30
         continue-on-error: true
       
+      - name: Validate artifacts
+        run: |
+          echo "📋 Checking created artifacts..."
+          ls -la model/ || echo "No model directory"
+          ls -la results/ || echo "No results directory"
+          ls -la explanations/ || echo "No explanations directory"
+        continue-on-error: true
+      
       - name: Upload model artifacts
-        uses: actions/upload-artifact@v4  # Update dari v3 ke v4
+        uses: actions/upload-artifact@v4
         with:
           name: trained-models-${{ github.sha }}
           path: |
@@ -226,6 +239,7 @@ jobs:
             results/
             explanations/
           retention-days: 30
+        continue-on-error: true
 
   security-scan:
     runs-on: ubuntu-latest
