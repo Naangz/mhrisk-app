@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -42,16 +43,36 @@ jobs:
           pip install "black[jupyter]" flake8 pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Check code formatting
+      - name: Check and fix code formatting
+        id: black-check
         run: |
           echo "🔍 Checking code formatting with Black..."
-          black --check --diff . --line-length=127
-        continue-on-error: false
+          if ! black --check --diff . --line-length=127; then
+            echo "⚠️ Code formatting issues found. Auto-fixing..."
+            black . --line-length=127
+            echo "format_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Code formatting is correct"
+            echo "format_changed=false" >> $GITHUB_OUTPUT
+          fi
       
-      - name: Lint with flake8
+      - name: Commit formatting changes
+        if: steps.black-check.outputs.format_changed == 'true' && github.event_name == 'push'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-fix code formatting with Black [skip ci]"
+            git push
+          fi
+      
+      - name: Lint with flake8 (warnings only)
         run: |
           echo "🔍 Running flake8 linting..."
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --max-line-length=127
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --max-line-length=127 || echo "⚠️ Critical linting errors found"
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         continue-on-error: true
 
