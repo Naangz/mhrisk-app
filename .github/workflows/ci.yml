@@ -180,7 +180,7 @@ jobs:
               json.dump(comparison, f, indent=2)
           "
                     fi
-                  continue-on-error: true
+        continue-on-error: true
 
       
       - name: Generate Base CML Report
