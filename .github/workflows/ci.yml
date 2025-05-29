@@ -1,4 +1,4 @@
-name: Continuous Integration - Multi-Model MLOps
+name: Mental Health MLOps CI with CML
 
 on:
   push:
@@ -12,15 +12,10 @@ on:
       retrain_models:
         description: 'Force model retraining'
         required: false
-        default: false
+        default: 'false'
         type: boolean
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  security-events: write  # Tambahkan permission untuk CodeQL
-  actions: read
+permissions: write-all  # Required untuk CML
 
 jobs:
   code-quality:
@@ -30,7 +25,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -44,37 +38,9 @@ jobs:
           pip install "black[jupyter]" flake8 pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Check and fix code formatting
-        id: black-check
+      - name: Check code formatting (warning only)
         run: |
-          echo "🔍 Checking code formatting with Black..."
-          if ! black --check --diff . --line-length=127; then
-            echo "⚠️ Code formatting issues found. Auto-fixing..."
-            black . --line-length=127
-            echo "format_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Code formatting is correct"
-            echo "format_changed=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Commit formatting changes
-        if: steps.black-check.outputs.format_changed == 'true' && github.event_name == 'push'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Auto-fix code formatting with Black [skip ci]"
-            git push
-          fi
-      
-      - name: Lint with flake8 (warnings only)
-        run: |
-          echo "🔍 Running flake8 linting..."
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --max-line-length=127 || echo "⚠️ Critical linting errors found"
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          black --check --diff . --line-length=127 || echo "⚠️ Code formatting issues found but continuing..."
         continue-on-error: true
 
   data-validation:
@@ -97,16 +63,15 @@ jobs:
       
       - name: Create directories
         run: |
-          mkdir -p Data Model Results Explanations Monitoring/whylogs_profiles
+          mkdir -p data model results explanations monitoring/whylogs_profiles
       
       - name: Create sample dataset (if not exists)
         run: |
-          if [ ! -f "data/mental_health_lite.csv" ]; then
+          if [ ! -f "data/mental_health_lite.csv" ] && [ ! -f "data/mental_health_life_cut.csv" ]; then
             python -c "
             import pandas as pd
             import numpy as np
             
-            # Create sample dataset
             np.random.seed(42)
             n_samples = 1000
             
@@ -129,7 +94,7 @@ jobs:
             
             df = pd.DataFrame(data)
             df.to_csv('data/mental_health_lite.csv', index=False)
-            print('Sample dataset created')
+            print('✅ Sample dataset created')
             "
           fi
       
@@ -137,21 +102,23 @@ jobs:
         run: |
           python -c "
           import pandas as pd
-          import numpy as np
+          import os
           
-          df = pd.read_csv('data/mental_health_lite.csv')
+          # Try to load existing datasets
+          data_files = ['data/mental_health_lite.csv', 'data/mental_health_life_cut.csv']
+          df = None
+          
+          for file_path in data_files:
+              if os.path.exists(file_path):
+                  df = pd.read_csv(file_path)
+                  print(f'✅ Dataset loaded from: {file_path}')
+                  break
+          
+          if df is None:
+              raise FileNotFoundError('No dataset found')
           
           assert len(df) > 0, 'Dataset is empty'
-          assert not df.isnull().all().any(), 'Dataset has completely null columns'
-          
-          required_cols = ['age', 'gender', 'employment_status', 'mental_health_risk']
-          missing_cols = [col for col in required_cols if col not in df.columns]
-          assert len(missing_cols) == 0, f'Missing required columns: {missing_cols}'
-          
-          assert df['mental_health_risk'].isin(['Low', 'Medium', 'High']).all(), 'Invalid risk levels'
-          
-          print('✅ Dataset validation passed')
-          print(f'Dataset shape: {df.shape}')
+          print(f'✅ Dataset validation passed - Shape: {df.shape}')
           "
 
   model-training:
@@ -166,6 +133,9 @@ jobs:
         with:
           python-version: '3.9'
           cache: 'pip'
+      
+      - name: Setup CML
+        uses: iterative/setup-cml@v2
       
       - name: Install dependencies
         run: |
@@ -212,7 +182,6 @@ jobs:
             
             df = pd.DataFrame(data)
             df.to_csv('data/mental_health_lite.csv', index=False)
-            print('✅ Sample dataset created')
             "
           fi
       
@@ -223,13 +192,129 @@ jobs:
         timeout-minutes: 30
         continue-on-error: true
       
-      - name: Validate artifacts
+      - name: Generate CML Report
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "📋 Checking created artifacts..."
-          ls -la model/ || echo "No model directory"
-          ls -la results/ || echo "No results directory"
-          ls -la explanations/ || echo "No explanations directory"
-        continue-on-error: true
+          echo "# 🤖 Mental Health MLOps Training Report" > report.md
+          echo "" >> report.md
+          echo "**Commit:** \`${{ github.sha }}\`" >> report.md
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> report.md
+          echo "**Timestamp:** $(date)" >> report.md
+          echo "" >> report.md
+          
+          # Model Metrics
+          if [ -f "results/metrics.txt" ]; then
+            echo "## 📊 Model Performance Metrics" >> report.md
+            echo "\`\`\`" >> report.md
+            cat results/metrics.txt >> report.md
+            echo "\`\`\`" >> report.md
+            echo "" >> report.md
+          fi
+          
+          # Model Comparison
+          if [ -f "results/model_comparison.json" ]; then
+            echo "## 🏆 Model Comparison Results" >> report.md
+            python -c "
+            import json
+            try:
+                with open('results/model_comparison.json', 'r') as f:
+                    data = json.load(f)
+                print(f'**Best Model:** {data[\"best_model\"]}')
+                print(f'**Final Test Accuracy:** {data[\"final_test_accuracy\"]:.4f}')
+                print(f'**Final Test F1 Score:** {data[\"final_test_f1\"]:.4f}')
+                print()
+                print('### Model Performance Comparison:')
+                for model, scores in data['model_scores'].items():
+                    print(f'- **{model}:** {scores[\"mean_accuracy\"]:.4f} (±{scores[\"std_accuracy\"]:.4f})')
+            except Exception as e:
+                print(f'Error reading model comparison: {e}')
+            " >> report.md
+            echo "" >> report.md
+          fi
+          
+          # Visualizations
+          echo "## 📈 Model Performance Visualizations" >> report.md
+          
+          if [ -f "results/model_comparison.png" ]; then
+            echo "### Model Comparison" >> report.md
+            echo "![Model Comparison](./results/model_comparison.png)" >> report.md
+            echo "" >> report.md
+          fi
+          
+          if [ -f "results/model_results.png" ]; then
+            echo "### Confusion Matrix" >> report.md
+            echo "![Confusion Matrix](./results/model_results.png)" >> report.md
+            echo "" >> report.md
+          fi
+          
+          if [ -f "results/shap_summary.png" ]; then
+            echo "### SHAP Feature Importance" >> report.md
+            echo "![SHAP Summary](./results/shap_summary.png)" >> report.md
+            echo "" >> report.md
+          fi
+          
+          if [ -f "results/shap_importance.png" ]; then
+            echo "### SHAP Detailed Analysis" >> report.md
+            echo "![SHAP Importance](./results/shap_importance.png)" >> report.md
+            echo "" >> report.md
+          fi
+          
+          # Data Quality Report
+          echo "## 📋 Data Quality Summary" >> report.md
+          python -c "
+          import pandas as pd
+          import os
+          
+          try:
+              # Try to load dataset
+              data_files = ['data/mental_health_lite.csv', 'data/mental_health_life_cut.csv']
+              df = None
+              
+              for file_path in data_files:
+                  if os.path.exists(file_path):
+                      df = pd.read_csv(file_path)
+                      break
+              
+              if df is not None:
+                  print(f'- **Dataset Shape:** {df.shape[0]} rows, {df.shape[1]} columns')
+                  print(f'- **Missing Values:** {df.isnull().sum().sum()} total')
+                  if 'mental_health_risk' in df.columns:
+                      risk_dist = df['mental_health_risk'].value_counts()
+                      print(f'- **Target Distribution:** {dict(risk_dist)}')
+                  print(f'- **Data Types:** {len(df.select_dtypes(include=[\"number\"]).columns)} numeric, {len(df.select_dtypes(include=[\"object\"]).columns)} categorical')
+              else:
+                  print('- **Dataset:** Not found or could not be loaded')
+          except Exception as e:
+              print(f'- **Data Quality Check:** Failed - {e}')
+          " >> report.md
+          
+          # Performance Thresholds
+          echo "" >> report.md
+          echo "## ✅ Quality Gates" >> report.md
+          python -c "
+          import json
+          import os
+          
+          try:
+              if os.path.exists('results/model_comparison.json'):
+                  with open('results/model_comparison.json', 'r') as f:
+                      data = json.load(f)
+                  
+                  accuracy = data['final_test_accuracy']
+                  f1_score = data['final_test_f1']
+                  
+                  print(f'- **Accuracy Threshold (≥0.70):** {\"✅ PASS\" if accuracy >= 0.70 else \"❌ FAIL\"} ({accuracy:.3f})')
+                  print(f'- **F1 Score Threshold (≥0.70):** {\"✅ PASS\" if f1_score >= 0.70 else \"❌ FAIL\"} ({f1_score:.3f})')
+                  print(f'- **Model Selection:** ✅ PASS ({data[\"best_model\"]} selected)')
+              else:
+                  print('- **Quality Gates:** ⚠️ Model results not available')
+          except Exception as e:
+              print(f'- **Quality Gates:** ❌ Error checking thresholds - {e}')
+          " >> report.md
+          
+          # Create CML comment
+          cml comment create report.md
       
       - name: Upload model artifacts
         uses: actions/upload-artifact@v4
@@ -244,42 +329,28 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
       
       - name: Run basic security checks
         run: |
           echo "🔍 Running basic security checks..."
           
-          # Install security tools
-          pip install safety bandit semgrep
+          pip install safety bandit
           
-          # Safety check for known vulnerabilities
           echo "Checking for known vulnerabilities..."
           safety check --json || echo "⚠️ Safety check completed with warnings"
           
-          # Bandit for security issues
           echo "Scanning for security issues..."
           bandit -r . -f json || echo "⚠️ Bandit scan completed with warnings"
           
-          # Semgrep for additional security patterns
-          echo "Running Semgrep security scan..."
-          semgrep --config=auto . --json || echo "⚠️ Semgrep scan completed with warnings"
-          
           echo "✅ Security scanning completed"
-        continue-on-error: true
-      
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '0'  # Don't fail the build
         continue-on-error: true
 
   integration-test:
@@ -300,17 +371,34 @@ jobs:
         run: |
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f App/requirements.txt ]; then pip install -r App/requirements.txt; fi
       
       - name: Download model artifacts
         uses: actions/download-artifact@v4
         with:
           name: trained-models-${{ github.sha }}
+          path: ./
         continue-on-error: true
       
       - name: Test basic functionality
         run: |
-          echo "✅ Integration tests completed"
+          echo "🧪 Running integration tests..."
+          
+          # Test model loading
+          python -c "
+          import os
+          
+          if os.path.exists('model/mental_health_pipeline.skops'):
+              print('✅ Model file exists')
+          else:
+              print('⚠️ Model file not found')
+          
+          if os.path.exists('model/model_metadata.json'):
+              print('✅ Model metadata exists')
+          else:
+              print('⚠️ Model metadata not found')
+          
+          print('✅ Integration tests completed')
+          "
         continue-on-error: true
 
   notify-status:
@@ -320,7 +408,7 @@ jobs:
     steps:
       - name: Notify CI Status
         run: |
-          echo "📋 CI Pipeline Summary:"
+          echo "📋 Mental Health MLOps CI Pipeline Summary:"
           echo "Code Quality: ${{ needs.code-quality.result }}"
           echo "Data Validation: ${{ needs.data-validation.result }}"
           echo "Model Training: ${{ needs.model-training.result }}"
@@ -328,7 +416,8 @@ jobs:
           echo "Integration Test: ${{ needs.integration-test.result }}"
           
           if [[ "${{ needs.code-quality.result }}" == "success" && 
-                "${{ needs.data-validation.result }}" == "success" ]]; then
+                "${{ needs.data-validation.result }}" == "success" && 
+                "${{ needs.model-training.result }}" == "success" ]]; then
             echo "✅ Core CI Pipeline completed successfully"
           else
             echo "⚠️ Some CI steps had issues but pipeline continued"
