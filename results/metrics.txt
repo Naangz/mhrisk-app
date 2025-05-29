@@ -1,20 +1,20 @@
-Best Model: LightGBM
-CV Accuracy: 0.9557
+Best Model: XGBoost
+CV Accuracy: 0.9529
 Test Accuracy: 0.9701
-Test F1 Score: 0.9699
+Test F1 Score: 0.9700
 
 Model Comparison:
-RandomForest: 0.9214 (+/- 0.0592)
-XGBoost: 0.9500 (+/- 0.0503)
-LightGBM: 0.9557 (+/- 0.0446)
+RandomForest: 0.9243 (+/- 0.0508)
+XGBoost: 0.9529 (+/- 0.0466)
+LightGBM: 0.9514 (+/- 0.0567)
 
 Classification Report:
               precision    recall  f1-score   support
 
-           0       0.99      0.99      0.99        70
-           1       0.96      0.91      0.93        54
+           0       0.97      0.99      0.98        70
+           1       0.96      0.93      0.94        54
            2       0.97      0.98      0.97       177
 
     accuracy                           0.97       301
-   macro avg       0.97      0.96      0.96       301
+   macro avg       0.97      0.96      0.97       301
 weighted avg       0.97      0.97      0.97       301

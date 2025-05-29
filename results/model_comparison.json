@@ -1,20 +1,20 @@
 {
-  "timestamp": "2025-05-28T21:26:06.494234",
-  "best_model": "LightGBM",
+  "timestamp": "2025-05-29T17:13:06.219603",
+  "best_model": "XGBoost",
   "model_scores": {
     "RandomForest": {
-      "mean_accuracy": 0.9214285714285714,
-      "std_accuracy": 0.02962348764761103
+      "mean_accuracy": 0.9242857142857144,
+      "std_accuracy": 0.025394841192330275
     },
     "XGBoost": {
-      "mean_accuracy": 0.95,
-      "std_accuracy": 0.025152595516655746
+      "mean_accuracy": 0.9528571428571428,
+      "std_accuracy": 0.02329929490042873
     },
     "LightGBM": {
-      "mean_accuracy": 0.9557142857142857,
-      "std_accuracy": 0.022314999074019043
+      "mean_accuracy": 0.9514285714285714,
+      "std_accuracy": 0.028356333201827448
     }
   },
   "final_test_accuracy": 0.9700996677740864,
-  "final_test_f1": 0.9698930735084731
+  "final_test_f1": 0.96998907169643
 }

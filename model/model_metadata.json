@@ -1,21 +1,26 @@
 {
-  "best_model_name": "LightGBM",
+  "best_model_name": "XGBoost",
   "feature_columns": [
     "age",
-    "gender_encoded",
-    "employment_encoded",
-    "work_env_encoded",
-    "history_encoded",
-    "treatment_encoded",
     "stress_level",
     "sleep_hours",
     "physical_activity_days",
     "depression_score",
     "anxiety_score",
     "social_support_score",
-    "productivity_score"
+    "productivity_score",
+    "gender_encoded",
+    "employment_status_encoded",
+    "work_environment_encoded",
+    "mental_health_history_encoded",
+    "seeks_treatment_encoded",
+    "gender_encoded",
+    "employment_status_encoded",
+    "work_environment_encoded",
+    "mental_health_history_encoded",
+    "seeks_treatment_encoded"
   ],
   "test_accuracy": 0.9700996677740864,
-  "test_f1": 0.9698930735084731,
-  "timestamp": "2025-05-28T21:26:07.170615"
+  "test_f1": 0.96998907169643,
+  "timestamp": "2025-05-29T17:13:06.232900"
 }

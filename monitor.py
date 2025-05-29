@@ -1,75 +1,62 @@
 import pandas as pd
-import whylogs as why
 import os
 from datetime import datetime
-
-
-def setup_whylogs():
-    """Setup WhyLogs untuk monitoring"""
-    try:
-        why.init(allow_local=True, allow_anonymous=False)
-        print("✅ WhyLogs monitoring initialized")
-        return True
-    except Exception as e:
-        print(f"⚠️ WhyLogs setup error: {e}")
-        return False
-
+from scripts.evidently_monitoring import EvidentlyMonitor
 
 def monitor_data_quality(df, profile_name="production_data"):
-    """Monitor data quality dengan WhyLogs"""
-
-    # Setup WhyLogs
-    if not setup_whylogs():
-        print("Skipping WhyLogs monitoring...")
-        return None, None
-
+    """Monitor data quality dengan Evidently saja"""
+    
     try:
-        # Create profile
-        profile = why.log(df)
-
-        # Create directory
-        os.makedirs("Monitoring/whylogs_profiles", exist_ok=True)
-
-        # Save profile with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        profile_path = f"Monitoring/whylogs_profiles/{profile_name}_{timestamp}"
-
-        # Use proper method to save
-        profile_view = profile.view()
-        profile_view.write(profile_path)
-
-        print(f"✅ Data quality profile saved: {profile_path}")
-        return profile, None
-
+        monitor = EvidentlyMonitor()
+        
+        # Load reference data if exists
+        reference_path = "monitoring/reference_data.csv"
+        if os.path.exists(reference_path):
+            reference_data = pd.read_csv(reference_path)
+            monitor.set_reference_data(reference_data)
+        
+        # Run monitoring
+        results = monitor.monitor_mental_health_data(df)
+        
+        print(f"✅ Evidently monitoring completed")
+        print(f"📊 Drift detected: {results['drift_results']['drift_detected']}")
+        
+        return results
+        
     except Exception as e:
-        print(f"⚠️ Data quality monitoring error: {e}")
-        return None, None
-
+        print(f"⚠️ Evidently monitoring error: {e}")
+        return None
 
 def detect_data_drift(reference_profile_path, current_df):
-    """Detect data drift - simplified version"""
-
+    """Detect data drift menggunakan Evidently"""
+    
     try:
-        # Simple drift detection based on statistical measures
-        print("🔍 Checking for data drift...")
-
-        # For now, return no drift detected
-        # In production, implement proper drift detection logic
-        drift_detected = False
-        drift_report = ["No significant drift detected"]
-
-        return drift_detected, drift_report
-
+        monitor = EvidentlyMonitor()
+        
+        # Load reference data
+        if os.path.exists(reference_profile_path):
+            reference_data = pd.read_csv(reference_profile_path)
+            monitor.set_reference_data(reference_data)
+            
+            # Run drift detection
+            results = monitor.monitor_mental_health_data(current_df)
+            
+            drift_detected = results['drift_results']['drift_detected']
+            drift_report = [f"Drifted columns: {len(results['drift_results']['drifted_columns'])}"]
+            
+            return drift_detected, drift_report
+        else:
+            print("⚠️ Reference data not found")
+            return False, ["Reference data not available"]
+            
     except Exception as e:
         print(f"⚠️ Drift detection error: {e}")
         return False, [f"Drift detection failed: {e}"]
 
-
 if __name__ == "__main__":
-    # Example usage
     try:
-        df = pd.read_csv("Data/mental_health_dataset.csv")
-        profile, report = monitor_data_quality(df)
+        df = pd.read_csv("data/mental_health_lite.csv")
+        results = monitor_data_quality(df)
         print("✅ Data quality monitoring completed")
     except Exception as e:
         print(f"❌ Monitoring failed: {e}")
