@@ -1,5 +1,5 @@
 {
-  "best_model_name": "XGBoost",
+  "best_model_name": "LightGBM",
   "feature_columns": [
     "age",
     "stress_level",
@@ -13,14 +13,65 @@
     "employment_status_encoded",
     "work_environment_encoded",
     "mental_health_history_encoded",
-    "seeks_treatment_encoded",
-    "gender_encoded",
-    "employment_status_encoded",
-    "work_environment_encoded",
-    "mental_health_history_encoded",
     "seeks_treatment_encoded"
   ],
-  "test_accuracy": 0.9700996677740864,
-  "test_f1": 0.96998907169643,
-  "timestamp": "2025-05-29T17:13:06.232900"
+  "test_accuracy": 0.9667774086378738,
+  "test_f1": 0.9666795438241248,
+  "cv_mean": 0.9585610701490529,
+  "cv_std": 0.007342863921396067,
+  "timestamp": "2025-06-05T11:26:32.903966",
+  "encoders_info": {
+    "gender": {
+      "classes_": [
+        "Female",
+        "Male",
+        "Non-binary",
+        "Prefer not to say"
+      ],
+      "type": "LabelEncoder"
+    },
+    "employment_status": {
+      "classes_": [
+        "Employed",
+        "Self-employed",
+        "Student",
+        "Unemployed"
+      ],
+      "type": "LabelEncoder"
+    },
+    "work_environment": {
+      "classes_": [
+        "Hybrid",
+        "On-site",
+        "Remote"
+      ],
+      "type": "LabelEncoder"
+    },
+    "mental_health_history": {
+      "classes_": [
+        "No",
+        "Yes"
+      ],
+      "type": "LabelEncoder"
+    },
+    "seeks_treatment": {
+      "classes_": [
+        "No",
+        "Yes"
+      ],
+      "type": "LabelEncoder"
+    },
+    "risk": {
+      "classes_": [
+        "High",
+        "Low",
+        "Medium"
+      ],
+      "type": "LabelEncoder"
+    }
+  },
+  "visualization_paths": {
+    "model_comparison": "results/model_comparison.png",
+    "model_results": "results/model_results.png"
+  }
 }

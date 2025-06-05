@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-06-05T11:26:32.384803",
+  "reference_data_size": 700,
+  "current_data_size": 301,
+  "drift_detected": false,
+  "drifted_columns": [],
+  "monitoring_status": "success",
+  "data_source": "data/mental_health_lite.csv",
+  "total_features": 14
+}

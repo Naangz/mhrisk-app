@@ -1,0 +1,15 @@
+{
+  "training_completed": true,
+  "timestamp": "2025-06-05T11:26:34.280099",
+  "best_model": "LightGBM",
+  "best_accuracy": 0.9667774086378738,
+  "data_source": "mental_health_lite",
+  "feature_count": 13,
+  "training_samples": 700,
+  "test_samples": 301,
+  "visualization_paths": {
+    "model_comparison": "results/model_comparison.png",
+    "model_results": "results/model_results.png"
+  },
+  "status": "success"
+}

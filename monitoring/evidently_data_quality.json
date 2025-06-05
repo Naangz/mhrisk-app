@@ -1,0 +1,7 @@
+{
+  "report_generated": false,
+  "error": "Import error: cannot import name 'DataQualityPreset' from 'evidently.presets' (c:\\Users\\User\\anaconda3\\envs\\psov2\\lib\\site-packages\\evidently\\presets\\__init__.py)",
+  "error_type": "import_error",
+  "timestamp": "2025-06-05T11:15:35.933612",
+  "data_source": {
+    "gender": 
