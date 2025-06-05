@@ -190,16 +190,6 @@ The production application provides:
 - **Staging**: https://huggingface.co/spaces/username/mental-health-mlops-staging
 - **Production**: https://huggingface.co/spaces/username/mental-health-risk-prediction
 
-## 📈 Performance Metrics
-
-### Model Performance
-
-| Model | CV Accuracy | Test Accuracy | F1 Score |
-|-------|-------------|---------------|----------|
-| RandomForest | 0.756 ± 0.023 | 0.742 | 0.738 |
-| XGBoost | 0.778 ± 0.019 | 0.765 | 0.761 |
-| LightGBM | 0.771 ± 0.021 | 0.758 | 0.754 |
-
 ### MLOps Maturity
 
 **Level 2: CI/CD Pipeline Automation**
@@ -304,4 +294,4 @@ This project is licensed under the Apache License - see the [LICENSE](LICENSE) f
 ![GitHub issues](https://img.shields.io/github/issues/username/mhrisk-app)
 ![GitHub last commit](https://img.shields.io/github/last-commit/username/mhrisk-app)
 
-**Last Updated**: January 2024
+**Last Updated**: June 2025
