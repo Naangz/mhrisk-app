@@ -7,7 +7,6 @@ lightgbm==4.1.0
 
 # Model Persistence
 skops==0.10.0
-pickle5==0.0.12
 
 # Data Visualization
 matplotlib==3.7.2
