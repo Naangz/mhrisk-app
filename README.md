@@ -23,21 +23,7 @@ This project implements a production-ready MLOps pipeline for mental health risk
 ## 🏗️ Architecture
 
 ### MLOps Pipeline Overview
-
-Data Input ──▶ Evidently Monitoring ──▶ Multi-Model Training
-│ │
-▼ ▼
-Drift Detection ──▶ Model Selection ──▶ Model Artifacts
-│ │
-▼ ▼
-Retraining Trigger ◀── CI/CD Pipeline ──▶ Staging Deploy
-│ │
-▼ ▼
-Model Update ◀── Production Deploy ──▶ Real-time Serving
-│ │
-▼ ▼
-Performance Monitor ◀── SHAP Explanations ──▶ User Feedback
-
+![image](https://github.com/user-attachments/assets/532a7655-d6f6-4f26-8b27-2684bf512cf6)
 
 ### Technology Stack
 
@@ -89,43 +75,6 @@ git push origin main
 3. **Monitor deployment**
 - CI Pipeline: Automated testing and training
 - CD Pipeline: Deployment to Hugging Face Spaces
-
-## 📁 Project Structure
-
-mhrisk-app/
-├── 📁 .github/workflows/ # CI/CD pipelines
-│ ├── ci.yml # Continuous Integration
-│ └── cd.yml # Continuous Deployment
-├── 📁 app/ # Gradio application
-│ ├── App.py # Main application file
-│ ├── requirements.txt # App dependencies
-│ └── README.md # App documentation
-├── 📁 data/ # Dataset storage
-│ ├── mental_health_lite.csv # Primary dataset
-│ └── mental_health_life_cut.csv # Alternative dataset
-├── 📁 model/ # Model artifacts
-│ ├── mental_health_pipeline.skops # Trained model
-│ ├── encoders.pkl # Label encoders
-│ ├── feature_columns.pkl # Feature metadata
-│ └── model_metadata.json # Model information
-├── 📁 results/ # Training results
-│ ├── feature_importance.png # Feature analysis
-│ ├── model_comparison.png # Model comparison
-│ ├── model_results.png # Performance metrics
-│ ├── metrics.txt # Text metrics
-│ └── model_comparison.json # JSON results
-├── 📁 scripts/ # Utility scripts
-│ ├── evidently_monitoring.py # Data monitoring
-│ ├── generate_cml_report.py # CML reporting
-│ ├── create_dummy_artifacts.py # Fallback artifacts
-│ └── validate_data.py # Data validation
-├── 📁 monitoring/ # Monitoring data
-│ └── evidently_reports/ # HTML reports
-├── train.py # Main training script
-├── monitor.py # Monitoring utilities
-├── requirements.txt # Project dependencies
-└── README.md # This file
-
 
 ## 🤖 Machine Learning Pipeline
 
