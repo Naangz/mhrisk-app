@@ -132,18 +132,34 @@ jobs:
             echo "✅ README.md found"
           else
             echo "⚠️ README.md not found, will create one"
-            cat > app_deploy/README.md << 'EOF'
----
-title: Mental Health Risk Identifier
-emoji: 🧠
-colorFrom: blue
-colorTo: green
-sdk: gradio
-sdk_version: 4.44.0
-app_file: app.py
-pinned: false
-license: mit
----
+            echo "---" > app_deploy/README.md
+            echo "title: Mental Health Risk Identifier" >> app_deploy/README.md
+            echo "emoji: 🧠" >> app_deploy/README.md
+            echo "colorFrom: blue" >> app_deploy/README.md
+            echo "colorTo: green" >> app_deploy/README.md
+            echo "sdk: gradio" >> app_deploy/README.md
+            echo "sdk_version: 4.44.0" >> app_deploy/README.md
+            echo "app_file: app.py" >> app_deploy/README.md
+            echo "pinned: false" >> app_deploy/README.md
+            echo "license: mit" >> app_deploy/README.md
+            echo "---" >> app_deploy/README.md
+            echo "" >> app_deploy/README.md
+            echo "# Mental Health Risk Identifier" >> app_deploy/README.md
+            echo "" >> app_deploy/README.md
+            echo "AI-powered mental health risk assessment using advanced MLOps pipeline." >> app_deploy/README.md
+            echo "" >> app_deploy/README.md
+            echo "## Features" >> app_deploy/README.md
+            echo "" >> app_deploy/README.md
+            echo "- Multi-Model Ensemble (RandomForest, XGBoost, LightGBM)" >> app_deploy/README.md
+            echo "- Real-time Risk Assessment" >> app_deploy/README.md
+            echo "- SHAP Model Explanations" >> app_deploy/README.md
+            echo "- Personalized Recommendations" >> app_deploy/README.md
+            echo "- Evidently Data Monitoring" >> app_deploy/README.md
+            echo "" >> app_deploy/README.md
+            echo "**Disclaimer:** This tool is for educational purposes only." >> app_deploy/README.md
+            echo "✅ README.md created with proper HF metadata"
+          fi
+
       - name: Deployment success summary
         run: |
           echo "🎉 Mental Health MLOps CD Pipeline COMPLETED!"
