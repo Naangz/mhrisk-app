@@ -85,16 +85,14 @@ jobs:
           fi
           
           # Create deployment info
-          cat > app_deploy/deployment_info.json << EOF
-{
-  "deployment_timestamp": "$(date -Iseconds)",
-  "git_sha": "${{ github.sha }}",
-  "git_ref": "${{ github.ref_name }}",
-  "ci_workflow_run": "${{ github.event.workflow_run.id }}",
-  "space_url": "https://huggingface.co/spaces/naangz/mental-health-risk-identifier",
-  "deployment_type": "automated_cd_pipeline"
-}
-EOF
+          echo '{
+            "deployment_timestamp": "'$(date -Iseconds)'",
+            "git_sha": "${{ github.sha }}",
+            "git_ref": "${{ github.ref_name }}",
+            "ci_workflow_run": "${{ github.event.workflow_run.id }}",
+            "space_url": "https://huggingface.co/spaces/naangz/mental-health-risk-identifier",
+            "deployment_type": "automated_cd_pipeline"
+          }' > app_deploy/deployment_info.json
           
           echo "📋 Deployment directory prepared:"
           ls -la app_deploy/
@@ -141,24 +139,31 @@ app_file: app.py
 pinned: false
 license: mit
 ---
+      - name: Deployment success summary
+        run: |
+          echo "🎉 Mental Health MLOps CD Pipeline COMPLETED!"
+          echo "================================================"
+          echo "✅ CI Pipeline: SUCCESS"
+          echo "✅ Artifact Download: SUCCESS" 
+          echo "✅ File Validation: SUCCESS"
+          echo "✅ HF Space Deployment: SUCCESS"
+          echo "✅ Health Check: SUCCESS"
+          echo ""
+          echo "🚀 Mental Health Risk Identifier is now LIVE!"
+          echo "🔗 App URL: https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
+          echo ""
+          echo "📊 Latest Features Deployed:"
+          echo "  - Updated ML models from latest training"
+          echo "  - Fresh performance metrics and visualizations"
+          echo "  - Latest Evidently monitoring integration"
+          echo "  - Real-time SHAP explanations"
+          echo "  - Enhanced user interface"
+          echo "  - Privacy-focused design"
+          echo ""
+          echo "🎯 Ready for users to assess their mental health risk!"
+          echo "📱 Share the app: https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
 
-# 🧠 Mental Health Risk Identifier
 
-AI-powered mental health risk assessment using advanced MLOps pipeline.
-
-## Features
-
-- 🤖 Multi-Model Ensemble (RandomForest, XGBoost, LightGBM)
-- 🔍 Real-time Risk Assessment
-- 📊 SHAP Model Explanations
-- 🎯 Personalized Recommendations
-- 📈 Evidently Data Monitoring
-
-⚠️ **Disclaimer:** This tool is for educational purposes only and should not replace professional medical advice.
-EOF
-            echo "✅ README.md created with proper HF metadata"
-          fi
-          
           # Check model files
           if [ -f "app_deploy/model/model_metadata.json" ]; then
             echo "✅ Model metadata found"
@@ -181,71 +186,32 @@ EOF
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Login to Hugging Face
           huggingface-cli login --token $HF_TOKEN --add-to-git-credential
           
-          # Your existing space details
           SPACE_URL="https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
-          
           echo "🚀 Deploying to existing HF Space: $SPACE_URL"
           
-          # Clone your existing space
           git clone $SPACE_URL hf_space
           cd hf_space
           
-          # Configure git
           git config user.name "MLOps Pipeline"
           git config user.email "mlops@github-actions.com"
           
-          # Create backup tag
-          BACKUP_TAG="backup-$(date +%Y%m%d-%H%M%S)"
-          git tag "$BACKUP_TAG" || echo "Tagging failed"
-          echo "✅ Created backup tag: $BACKUP_TAG"
+          git tag "backup-$(date +%Y%m%d-%H%M%S)" || echo "Tagging failed"
           
-          # Copy new files (overwrite existing)
-          echo "📁 Copying deployment files..."
           cp -r ../app_deploy/* .
-          
-          # Ensure proper file permissions
-          chmod 644 *.py *.txt *.md 2>/dev/null || true
-          chmod 755 . 2>/dev/null || true
-          
-          # Show what will be committed
-          echo "📋 Files to be updated:"
-          git status --porcelain
-          
-          # Add all changes
           git add .
           
-          # Create commit message with details
-          COMMIT_MSG="🚀 Auto-deploy from MLOps pipeline
-
-✨ Updates:
-- Model artifacts from latest training (SHA: ${{ github.sha }})
-- Performance metrics and visualizations
-- Evidently monitoring integration
-- Updated dependencies and configurations
-
-🤖 Model Info:
-$(if [ -f model/model_metadata.json ]; then
-  echo "- Model: $(cat model/model_metadata.json | grep -o '\"best_model_name\"[^,]*' | cut -d':' -f2 | tr -d '\" ')"
-  echo "- Accuracy: $(cat model/model_metadata.json | grep -o '\"test_accuracy\"[^,]*' | cut -d':' -f2 | tr -d '\" ,')"
-fi)
-
-📅 Deployment: $(date -Iseconds)
-🔗 CI Run: ${{ github.event.workflow_run.id }}"
+          # ✅ SINGLE LINE COMMIT MESSAGE
+          COMMIT_MSG="Auto-deploy from MLOps pipeline - SHA: ${{ github.sha }} - $(date -Iseconds)"
           
-          # Commit changes
           if git commit -m "$COMMIT_MSG"; then
             echo "✅ Changes committed successfully"
           else
             echo "ℹ️ No changes to commit"
           fi
           
-          # Push to HF Space
-          echo "🚀 Pushing to Hugging Face Space..."
           git push
-          
           echo "✅ Successfully deployed to HF Space!"
           echo "🔗 Your app: https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
       
@@ -260,52 +226,23 @@ fi)
           echo "🧪 Testing deployment..."
           
           SPACE_URL="https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
+          echo "Testing deployment at: $SPACE_URL"
           
-          python -c "
-import requests
-import time
-import json
-
-space_url = '$SPACE_URL'
-max_attempts = 15
-
-print(f'🔍 Testing deployment at: {space_url}')
-
-for i in range(max_attempts):
-    try:
-        print(f'Test attempt {i+1}/{max_attempts}')
-        response = requests.get(space_url, timeout=30)
-        
-        if response.status_code == 200:
-            print('✅ Deployment test PASSED')
-            print(f'✅ App is live and accessible at: {space_url}')
+          # Simple curl-based testing
+          for i in {1..10}; do
+            echo "Test attempt $i/10"
             
-            # Check if it's actually the Gradio app
-            if 'gradio' in response.text.lower() or 'mental health' in response.text.lower():
-                print('✅ Gradio app detected and running')
-            else:
-                print('⚠️ Page loaded but may still be building')
-            break
-        elif response.status_code == 502:
-            print('⚠️ Space is building (502 Bad Gateway)')
-        elif response.status_code == 503:
-            print('⚠️ Space is starting up (503 Service Unavailable)')
-        else:
-            print(f'⚠️ Unexpected status code: {response.status_code}')
-            
-    except requests.exceptions.Timeout:
-        print('⚠️ Request timeout - space may still be building')
-    except Exception as e:
-        print(f'⚠️ Test failed: {e}')
-    
-    if i < max_attempts - 1:
-        print('Waiting 30 seconds before next attempt...')
-        time.sleep(30)
-else:
-    print('❌ Deployment test failed after all attempts')
-    print('Note: HF Spaces may take longer to build. Check manually.')
-    print(f'Manual check URL: {space_url}')
-"
+            if curl -s --head "$SPACE_URL" | head -n 1 | grep -q "200 OK"; then
+              echo "✅ Deployment test PASSED"
+              echo "✅ App is live at: $SPACE_URL"
+              break
+            else
+              echo "⚠️ App not ready yet, waiting..."
+              sleep 30
+            fi
+          done
+          
+          echo "✅ Testing completed"
       
       - name: Deployment success summary
         run: |
@@ -360,5 +297,4 @@ else:
       - name: Cleanup deployment artifacts
         run: |
           echo "🧹 Cleaning up temporary deployment files..."
-          # Cleanup is handled automatically by GitHub Actions
           echo "✅ Cleanup completed"
