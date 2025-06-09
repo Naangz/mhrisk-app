@@ -206,33 +206,38 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           huggingface-cli login --token $HF_TOKEN --add-to-git-credential
-          
+
+          # Set git credential helper and inject token for git push
+          git config --global credential.helper store
+          echo "https://__token__:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+
           SPACE_URL="https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
           echo "🚀 Deploying to existing HF Space: $SPACE_URL"
-          
+
           git clone $SPACE_URL hf_space
           cd hf_space
-          
-          git config user.name "MLOps Pipeline"
-          git config user.email "mlops@github-actions.com"
-          
+
+          git config user.name "Naangz"
+          git config user.email "naangzaee@gmail.com"
+
           git tag "backup-$(date +%Y%m%d-%H%M%S)" || echo "Tagging failed"
-          
+
           cp -r ../app_deploy/* .
           git add .
-          
-          # ✅ SINGLE LINE COMMIT MESSAGE
+
           COMMIT_MSG="Auto-deploy from MLOps pipeline - SHA: ${{ github.sha }} - $(date -Iseconds)"
-          
+
           if git commit -m "$COMMIT_MSG"; then
             echo "✅ Changes committed successfully"
           else
             echo "ℹ️ No changes to commit"
           fi
-          
+
+          echo "🚀 Pushing to Hugging Face Space..."
           git push
           echo "✅ Successfully deployed to HF Space!"
           echo "🔗 Your app: https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
+
       
       - name: Wait for space rebuild
         run: |
