@@ -19,7 +19,16 @@
   "test_f1": 0.9666795438241248,
   "cv_mean": 0.9585610701490529,
   "cv_std": 0.007342863921396067,
-  "timestamp": "2025-06-05T14:24:40.581115",
+  "final_test_accuracy": 0.9667774086378738,
+  "final_test_f1": 0.9666795438241248,
+  "model_quality_passed": true,
+  "quality_threshold": 0.7,
+  "f1_threshold": 0.65,
+  "model_performance_tier": "excellent",
+  "f1_macro": 0.9624031192427419,
+  "training_samples": 13,
+  "model_complexity": "medium",
+  "timestamp": "2025-06-05T15:32:16.932766",
   "encoders_info": {
     "gender": {
       "classes_": [

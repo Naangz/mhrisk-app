@@ -1,6 +1,6 @@
 {
   "training_completed": true,
-  "timestamp": "2025-06-05T14:24:42.705778",
+  "timestamp": "2025-06-05T15:32:17.863703",
   "best_model": "LightGBM",
   "best_accuracy": 0.9667774086378738,
   "data_source": "mental_health_lite",
