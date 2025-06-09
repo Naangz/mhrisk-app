@@ -34,13 +34,10 @@ jobs:
       - name: Download CI artifacts from triggering workflow
         uses: dawidd6/action-download-artifact@v2
         with:
-          workflow: Mental Health MLOps CI with Evidently and CML
-          workflow_conclusion: success
-          branch: main
+          run_id: ${{ github.event.workflow_run.id }}
           name: trained-models
           path: ./artifacts
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          run_id: ${{ github.event.workflow_run.id }}
         
       
       - name: Setup Python
