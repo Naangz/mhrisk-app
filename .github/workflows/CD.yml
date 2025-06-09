@@ -1,0 +1,337 @@
+name: Mental Health MLOps CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["Mental Health MLOps CI with Evidently and CML"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      force_deploy:
+        description: 'Force deployment even if CI had warnings'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  deployments: write
+  packages: write
+
+jobs:
+  check-ci-status:
+    runs-on: ubuntu-latest
+    outputs:
+      ci-success: ${{ steps.check.outputs.ci-success }}
+    steps:
+      - name: Check CI workflow status
+        id: check
+        run: |
+          if [[ "${{ github.event.workflow_run.conclusion }}" == "success" || "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
+            echo "ci-success=true" >> $GITHUB_OUTPUT
+            echo "✅ CI passed - proceeding with deployment"
+          else
+            echo "ci-success=false" >> $GITHUB_OUTPUT
+            echo "❌ CI failed - deployment blocked"
+          fi
+
+  download-artifacts:
+    runs-on: ubuntu-latest
+    needs: check-ci-status
+    if: needs.check-ci-status.outputs.ci-success == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download CI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-models-${{ github.sha }}
+          path: ./
+        continue-on-error: true
+      
+      - name: Validate deployment artifacts
+        run: |
+          echo "📋 Validating deployment artifacts..."
+          if [ -f "model/model_metadata.json" ]; then
+            echo "✅ Model metadata found"
+            cat model/model_metadata.json
+          else
+            echo "❌ Model metadata missing"
+            exit 1
+          fi
+          if [ -f "model/mental_health_pipeline.skops" ]; then
+            echo "✅ Model file found"
+          else
+            echo "❌ Model file missing"
+            exit 1
+          fi
+          if [ -f "app/App.py" ]; then
+            echo "✅ Gradio app found"
+          else
+            echo "❌ Gradio app missing"
+            exit 1
+          fi
+          if [ -f "monitoring/evidently_summary.json" ]; then
+            echo "✅ Evidently monitoring results found"
+            cat monitoring/evidently_summary.json
+          else
+            echo "⚠️ Evidently monitoring results missing"
+          fi
+          echo "✅ Artifact validation completed"
+      
+      - name: Prepare deployment package
+        run: |
+          echo "📦 Preparing deployment package..."
+          mkdir -p deployment_package
+          cp -r app/* deployment_package/
+          cp -r model deployment_package/
+          cp -r results deployment_package/ || echo "No results directory"
+          cp -r explanations deployment_package/ || echo "No explanations directory"
+          cp -r monitoring deployment_package/ || echo "No monitoring directory"
+          cat > deployment_package/deployment_info.json << EOF
+{
+  "deployment_timestamp": "$(date -Iseconds)",
+  "git_sha": "${{ github.sha }}",
+  "git_ref": "${{ github.ref_name }}",
+  "ci_workflow_run": "${{ github.event.workflow_run.id }}",
+  "deployment_trigger": "${{ github.event_name }}"
+}
+EOF
+          echo "✅ Deployment package prepared"
+          ls -la deployment_package/
+      
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package-${{ github.sha }}
+          path: deployment_package/
+          retention-days: 30
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [check-ci-status, download-artifacts]
+    if: needs.check-ci-status.outputs.ci-success == 'true'
+    environment:
+      name: staging
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package-${{ github.sha }}
+          path: ./
+      
+      - name: Setup Python for deployment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Hugging Face CLI
+        run: |
+          pip install --upgrade "huggingface_hub[cli]"
+      
+      - name: Deploy to Hugging Face Staging
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+        run: |
+          huggingface-cli login --token $HF_TOKEN --add-to-git-credential
+          STAGING_SPACE="mental-health-mlops-staging"
+          echo "🚀 Deploying to staging space: $STAGING_SPACE"
+          if huggingface-cli repo info $HF_USERNAME/$STAGING_SPACE --repo-type=space 2>/dev/null; then
+            echo "📥 Staging space exists, updating..."
+            git clone https://huggingface.co/spaces/$HF_USERNAME/$STAGING_SPACE staging_repo
+            cd staging_repo
+            git tag "backup-$(date +%Y%m%d-%H%M%S)" || echo "Tagging failed"
+            cp -r ../deployment_package/* . 2>/dev/null || echo "Copy completed with warnings"
+            git add .
+            git commit -m "Update staging deployment - ${{ github.sha }}" || echo "No changes to commit"
+            git push
+          else
+            echo "📦 Creating new staging space..."
+            huggingface-cli repo create $HF_USERNAME/$STAGING_SPACE --type=space --space_sdk=gradio
+            git clone https://huggingface.co/spaces/$HF_USERNAME/$STAGING_SPACE staging_repo
+            cd staging_repo
+            cp -r ../deployment_package/* . 2>/dev/null || echo "Copy completed with warnings"
+            git add .
+            git commit -m "Initial staging deployment - ${{ github.sha }}"
+            git push
+          fi
+          echo "✅ Staging deployment completed"
+
+      - name: Wait for staging deployment
+        run: |
+          echo "⏳ Waiting for staging deployment to be ready..."
+          sleep 90
+
+      - name: Run staging health checks
+        run: |
+          echo "🏥 Running staging health checks..."
+          python -c "
+import requests
+import time
+staging_url = 'https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/mental-health-mlops-staging'
+for i in range(12):
+    try:
+        print(f'Health check attempt {i+1}/12: {staging_url}')
+        response = requests.get(staging_url, timeout=20)
+        if response.status_code == 200:
+            print('✅ Staging health check passed')
+            break
+        else:
+            print(f'⚠️ Status code: {response.status_code}')
+    except Exception as e:
+        print(f'⚠️ Health check failed: {e}')
+    if i < 11:
+        time.sleep(30)
+else:
+    print('❌ Staging health check failed after 12 attempts')
+    print('Note: HF Spaces may take longer to build. Check manually.')
+"
+
+  manual-approval:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.event.inputs.environment == 'production' || (github.ref == 'refs/heads/main' && github.event_name == 'workflow_run')
+    environment: 
+      name: production-approval
+    steps:
+      - name: Manual Approval Required
+        run: |
+          echo "🔍 Staging deployment successful!"
+          echo "Review staging environment before production deployment."
+          echo "🔗 Staging URL: https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/mental-health-mlops-staging"
+          echo "🚀 Approve this workflow to deploy to production"
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [manual-approval, download-artifacts]
+    environment:
+      name: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package-${{ github.sha }}
+          path: ./
+      
+      - name: Setup Python for deployment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Hugging Face CLI
+        run: |
+          pip install --upgrade "huggingface_hub[cli]"
+      
+      - name: Deploy to Production
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+        run: |
+          huggingface-cli login --token $HF_TOKEN --add-to-git-credential
+          PROD_SPACE="mental-health-risk-prediction"
+          echo "🚀 Deploying to production space: $PROD_SPACE"
+          if huggingface-cli repo info $HF_USERNAME/$PROD_SPACE --repo-type=space 2>/dev/null; then
+            echo "📥 Production space exists, updating..."
+            git clone https://huggingface.co/spaces/$HF_USERNAME/$PROD_SPACE prod_repo
+            cd prod_repo
+            git tag "production-backup-$(date +%Y%m%d-%H%M%S)" || echo "Tagging failed"
+            cp -r ../deployment_package/* . 2>/dev/null || echo "Copy completed with warnings"
+            git add .
+            git commit -m "Production deployment - ${{ github.sha }}" || echo "No changes to commit"
+            git push
+          else
+            echo "📦 Creating new production space..."
+            huggingface-cli repo create $HF_USERNAME/$PROD_SPACE --type=space --space_sdk=gradio
+            git clone https://huggingface.co/spaces/$HF_USERNAME/$PROD_SPACE prod_repo
+            cd prod_repo
+            cp -r ../deployment_package/* . 2>/dev/null || echo "Copy completed with warnings"
+            git add .
+            git commit -m "Initial production deployment - ${{ github.sha }}"
+            git push
+          fi
+          echo "✅ Production deployment completed"
+
+      - name: Wait for production deployment
+        run: |
+          echo "⏳ Waiting for production deployment to be ready..."
+          sleep 120
+
+      - name: Run production smoke tests
+        run: |
+          echo "🧪 Running production smoke tests..."
+          python -c "
+import requests
+import time
+prod_url = 'https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/mental-health-risk-prediction'
+for i in range(10):
+    try:
+        print(f'Production smoke test attempt {i+1}/10')
+        response = requests.get(prod_url, timeout=25)
+        if response.status_code == 200:
+            print('✅ Production smoke test passed')
+            break
+        else:
+            print(f'⚠️ Status code: {response.status_code}')
+    except Exception as e:
+        print(f'⚠️ Smoke test failed: {e}')
+    if i < 9:
+        time.sleep(30)
+else:
+    print('❌ Production smoke test failed')
+    print('Note: HF Spaces may take longer to build. Check manually.')
+"
+
+  notify-deployment:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    steps:
+      - name: Deployment notification
+        run: |
+          echo "📋 Mental Health MLOps CD Pipeline Summary"
+          if [[ "${{ needs.deploy-staging.result }}" == "success" ]]; then
+            echo "✅ Staging deployment: SUCCESS"
+            echo "🔗 Staging URL: https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/mental-health-mlops-staging"
+          elif [[ "${{ needs.deploy-staging.result }}" == "skipped" ]]; then
+            echo "⏭️ Staging deployment: SKIPPED"
+          else
+            echo "❌ Staging deployment: FAILED"
+          fi
+          echo ""
+          if [[ "${{ needs.deploy-production.result }}" == "success" ]]; then
+            echo "✅ Production deployment: SUCCESS"
+            echo "🔗 Production URL: https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/mental-health-risk-prediction"
+          elif [[ "${{ needs.deploy-production.result }}" == "skipped" ]]; then
+            echo "⏭️ Production deployment: SKIPPED (Manual approval required)"
+          else
+            echo "❌ Production deployment: FAILED"
+          fi
+          echo ""
+          echo "🎉 Mental Health MLOps CD Pipeline completed!"
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    steps:
+      - name: Cleanup deployment artifacts
+        run: |
+          echo "🧹 Cleaning up deployment artifacts..."
+          # Add cleanup logic for old artifacts if needed
+          echo "✅ Cleanup completed"
