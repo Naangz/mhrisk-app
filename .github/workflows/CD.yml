@@ -31,12 +31,17 @@ jobs:
           fetch-depth: 0
           lfs: true
       
-      - name: Download CI artifacts
-        uses: actions/download-artifact@v4
+      - name: Download CI artifacts from triggering workflow
+        uses: dawidd6/action-download-artifact@v2
         with:
+          workflow: Mental Health MLOps CI with Evidently and CML
+          workflow_conclusion: success
+          branch: main
           name: trained-models
           path: ./artifacts
-        continue-on-error: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          run_id: ${{ github.event.workflow_run.id }}
+        
       
       - name: Setup Python
         uses: actions/setup-python@v4
