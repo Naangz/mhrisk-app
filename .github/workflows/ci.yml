@@ -168,7 +168,7 @@ jobs:
       - name: Upload artifacts including Evidently reports
         uses: actions/upload-artifact@v4
         with:
-          name: trained-models-${{ github.sha }}
+          name: trained-models
           path: |
             model/
             results/

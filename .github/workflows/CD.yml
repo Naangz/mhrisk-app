@@ -34,7 +34,7 @@ jobs:
       - name: Download CI artifacts
         uses: actions/download-artifact@v4
         with:
-          name: trained-models-${{ github.sha }}
+          name: trained-models
           path: ./artifacts
         continue-on-error: true
       
