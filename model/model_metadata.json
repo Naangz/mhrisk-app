@@ -28,7 +28,7 @@
   "f1_macro": 0.9624031192427419,
   "training_samples": 13,
   "model_complexity": "medium",
-  "timestamp": "2025-06-05T15:32:16.932766",
+  "timestamp": "2025-06-09T18:49:04.170895",
   "encoders_info": {
     "gender": {
       "classes_": [
