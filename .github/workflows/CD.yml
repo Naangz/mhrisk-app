@@ -201,40 +201,54 @@ jobs:
           
           echo "✅ Critical files validation completed"
       
+      - name: Setup Git LFS
+        run: |
+          sudo apt-get update
+          sudo apt-get install git-lfs
+          git lfs install
+
+      - name: Setup Git Credential for Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config --global credential.helper store
+          echo "https://__token__:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+
       - name: Deploy to Hugging Face Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          huggingface-cli login --token $HF_TOKEN --add-to-git-credential
-
-          # Set git credential helper and inject token for git push
           git config --global credential.helper store
           echo "https://__token__:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
 
           SPACE_URL="https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
-          echo "🚀 Deploying to existing HF Space: $SPACE_URL"
-
           git clone $SPACE_URL hf_space
           cd hf_space
 
-          git config user.name "Naangz"
-          git config user.email "naangzaee@gmail.com"
-
-          git tag "backup-$(date +%Y%m%d-%H%M%S)" || echo "Tagging failed"
+          git lfs install
+          git lfs track "*.skops"
+          git lfs track "*.pkl"
+          git lfs track "*.png"
+          git lfs track "*.jpg"
+          git lfs track "*.jpeg"
+          git lfs track "*.csv"
+          git add .gitattributes
 
           cp -r ../app_deploy/* .
           git add .
 
-          COMMIT_MSG="Auto-deploy from MLOps pipeline - SHA: ${{ github.sha }} - $(date -Iseconds)"
+          git config user.name "MLOps Pipeline"
+          git config user.email "mlops@github-actions.com"
 
+          COMMIT_MSG="Auto-deploy from MLOps pipeline - SHA: ${{ github.sha }} - $(date -Iseconds)"
           if git commit -m "$COMMIT_MSG"; then
             echo "✅ Changes committed successfully"
           else
             echo "ℹ️ No changes to commit"
           fi
 
-          echo "🚀 Pushing to Hugging Face Space..."
           git push
+
           echo "✅ Successfully deployed to HF Space!"
           echo "🔗 Your app: https://huggingface.co/spaces/naangz/mental-health-risk-identifier"
 
