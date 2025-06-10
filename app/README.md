@@ -7,7 +7,7 @@ sdk: gradio
 sdk_version: 3.50.0
 app_file: App.py
 pinned: false
-license: apache
+license: apache-2.0
 ---
 
 # 🧠 Mental Health Risk Prediction MLOps System
