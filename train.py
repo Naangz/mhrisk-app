@@ -67,10 +67,17 @@ def load_and_prepare_data():
     
     # Encode target variable
     if 'mental_health_risk' in df.columns:
+        # Tentukan urutan label yang diinginkan
+        desired_order = ['Low', 'Medium', 'High']
         le_risk = LabelEncoder()
+        le_risk.fit(desired_order)  # Fit dengan urutan yang diinginkan
+        
         df['mental_health_risk'] = df['mental_health_risk'].fillna('Unknown')
-        df['risk_encoded'] = le_risk.fit_transform(df['mental_health_risk'].astype(str))
+        df['risk_encoded'] = le_risk.transform(df['mental_health_risk'].astype(str))
         encoders['risk'] = le_risk
+        
+        # Verifikasi urutan encoding
+        print(f"✅ Urutan label: {le_risk.classes_} -> {list(range(len(le_risk.classes_)))}")   
         print(f"✅ Target encoded: {le_risk.classes_} -> {list(range(len(le_risk.classes_)))}")
     
     # ✅ CRITICAL: Remove original categorical columns to avoid confusion
