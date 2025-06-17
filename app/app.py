@@ -31,6 +31,10 @@ class MentalHealthPredictor:
                 untrusted_types = get_untrusted_types(file=model_path)
                 self.model = load(model_path, trusted=untrusted_types)
                 print("✅ Model loaded successfully")
+                
+                # Debug model classes untuk memastikan mapping yang benar
+                if hasattr(self.model, 'classes_'):
+                    print(f"📊 Model classes order: {self.model.classes_}")
             else:
                 print(f"❌ Model file not found at {model_path}")
                 return False
@@ -106,6 +110,34 @@ class MentalHealthPredictor:
         except Exception as e:
             print(f"❌ Error preparing input data: {e}")
             return None
+
+    def determine_correct_mapping(self, prediction_proba, stress_level, depression_score, anxiety_score):
+        """
+        Menentukan mapping label yang benar berdasarkan logika domain knowledge
+        """
+        # Hitung risk indicators
+        high_risk_indicators = 0
+        if stress_level >= 8: high_risk_indicators += 1
+        if depression_score >= 30: high_risk_indicators += 1
+        if anxiety_score >= 30: high_risk_indicators += 1
+        
+        # Cari probabilitas tertinggi
+        max_prob_idx = np.argmax(prediction_proba)
+        max_prob = prediction_proba[max_prob_idx]
+        
+        # Jika ada banyak indikator high risk tapi probabilitas tertinggi di index 0
+        # kemungkinan mapping terbalik
+        if high_risk_indicators >= 2 and max_prob_idx == 0 and max_prob > 0.7:
+            print("🔄 Detected reversed mapping - applying fix")
+            return ['High', 'Medium', 'Low'], prediction_proba[::-1]  # Balik urutan
+        
+        # Jika indikator low risk tapi probabilitas tertinggi di index 2
+        elif high_risk_indicators == 0 and max_prob_idx == 2 and max_prob > 0.7:
+            print("🔄 Detected reversed mapping - applying fix") 
+            return ['High', 'Medium', 'Low'], prediction_proba[::-1]  # Balik urutan
+        
+        # Default mapping normal
+        return ['Low', 'Medium', 'High'], prediction_proba
 
     def get_risk_interpretation(self, risk_level, probabilities):
         interpretations = {
@@ -189,13 +221,31 @@ class MentalHealthPredictor:
             if input_features is None:
                 return self.create_fallback_response()
 
+            # Prediksi model
             prediction_proba = self.model.predict_proba(input_features)[0]
             prediction = self.model.predict(input_features)[0]
 
-            risk_levels = ['Low', 'Medium', 'High']
-            risk_prediction = risk_levels[prediction] if prediction < len(risk_levels) else 'Medium'
+            # Debug logging
+            print(f"🔍 Raw prediction: {prediction}")
+            print(f"🔍 Raw probabilities: {prediction_proba}")
 
-            risk_info = self.get_risk_interpretation(risk_prediction, prediction_proba)
+            # PERBAIKAN UTAMA: Tentukan mapping yang benar
+            corrected_levels, corrected_proba = self.determine_correct_mapping(
+                prediction_proba, stress_level, depression_score, anxiety_score
+            )
+
+            # Ambil prediksi berdasarkan mapping yang sudah dikoreksi  
+            risk_prediction = corrected_levels[prediction] if prediction < len(corrected_levels) else 'Medium'
+            
+            # Validasi tambahan berdasarkan probabilitas tertinggi
+            max_prob_idx = np.argmax(corrected_proba)
+            if max_prob_idx < len(corrected_levels):
+                risk_prediction = corrected_levels[max_prob_idx]
+
+            print(f"✅ Final prediction: {risk_prediction}")
+            print(f"✅ Corrected probabilities: {corrected_proba}")
+
+            risk_info = self.get_risk_interpretation(risk_prediction, corrected_proba)
 
             # ======= RESULT HTML START =======
             result_html = f"""
@@ -211,12 +261,12 @@ class MentalHealthPredictor:
                 <div style="margin: 15px 0;">
             """
 
-            for i, (level, prob) in enumerate(zip(risk_levels, prediction_proba)):
+            # Gunakan corrected_levels dan corrected_proba untuk tampilan
+            for i, (level, prob) in enumerate(zip(corrected_levels, corrected_proba)):
                 emoji = "🟢" if level == "Low" else "🟡" if level == "Medium" else "🔴"
                 width = prob * 100
                 bar_color = "#28a745" if level == "Low" else "#ffc107" if level == "Medium" else "#dc3545"
-                # Perbaikan: Gunakan warna teks yang lebih kontras
-                text_color = "white" if level in ["Low", "High"] else "#212529"  # Putih untuk hijau/merah, hitam untuk kuning
+                text_color = "white" if level in ["Low", "High"] else "#212529"
                 font_size = "0.95em" if width > 10 else "0.85em"
             
                 result_html += f"""
@@ -264,6 +314,8 @@ class MentalHealthPredictor:
 
         except Exception as e:
             print(f"❌ Prediction error: {e}")
+            import traceback
+            traceback.print_exc()
             return self.create_fallback_response()
 
     def create_fallback_response(self):
@@ -311,6 +363,14 @@ class MentalHealthPredictor:
         """
         return recommendations_html
 
+    def debug_model_info(self):
+        """Debug function untuk troubleshooting"""
+        if self.model:
+            print("=== MODEL DEBUG INFO ===")
+            if hasattr(self.model, 'classes_'):
+                print(f"Model classes: {self.model.classes_}")
+            print("========================")
+
 # Inisialisasi
 predictor = MentalHealthPredictor()
 
@@ -339,7 +399,6 @@ with gr.Blocks(
         border-radius: 15px;
         margin-bottom: 2rem;
     }
-    /* Perbaikan kontras untuk elemen teks */
     .gradio-container .prose {
         color: #212529 !important;
     }
@@ -350,7 +409,6 @@ with gr.Blocks(
         color: #212529 !important;
     }
     
-    /* Styling dropdown yang lebih spesifik dan kuat */
     .gradio-container .gr-form > label > select,
     .gradio-container select,
     .gradio-container .dropdown select,
@@ -367,7 +425,6 @@ with gr.Blocks(
         background-color: #374151 !important;
     }
     
-    /* Target lebih spesifik untuk Gradio dropdown */
     .gradio-container .gr-box select,
     .gradio-container .gr-padded select {
         color: #ffffff !important;
@@ -433,4 +490,3 @@ with gr.Blocks(
 
 if __name__ == "__main__":
     app.launch(server_name="0.0.0.0", server_port=7860, share=False, show_error=True)
-
